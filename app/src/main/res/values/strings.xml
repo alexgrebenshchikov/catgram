@@ -1,3 +1,9 @@
 <resources>
     <string name="app_name">Catgram</string>
+    <string name="your_web_client_id">972666292173-vq2g76bb5b3tknutgrapnrpdaur5a9c5.apps.googleusercontent.com</string>
+    <string name="cats_card">cats card</string>
+    <string name="filter_by_breed">Filter by breed</string>
+    <string name="start_screen_title">Welcome to Catgram</string>
+    <string name="sign_in_default_error">Something went wrong, try again later.</string>
+    <string name="sign_out_button_text">Sign Out</string>
 </resources>

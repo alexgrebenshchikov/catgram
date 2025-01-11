@@ -1,48 +1,51 @@
 package com.mobdev.catgram.ui
 
-import android.app.Activity
+import android.content.Intent
 import android.util.Log
-import android.widget.Toast
-import androidx.compose.foundation.layout.Arrangement
+import androidx.activity.ComponentActivity
+import androidx.activity.result.ActivityResultLauncher
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.input.PasswordVisualTransformation
-import androidx.compose.ui.unit.dp
-import com.google.firebase.auth.FirebaseAuth
+import com.google.android.gms.auth.api.signin.GoogleSignIn
+import com.google.firebase.auth.ktx.auth
+import com.google.firebase.ktx.Firebase
+import com.mobdev.catgram.MainActivity
+import com.mobdev.catgram.auth.signInViaGoogle
+import com.mobdev.catgram.ui.screens.ProfileScreen
+import com.mobdev.catgram.ui.screens.SearchScreen
+import com.mobdev.catgram.ui.screens.StartScreen
 
 sealed class BottomNavScreen(val route: String, val label: String) {
-    object Feed : BottomNavScreen("feed", "Feed")
     object Search : BottomNavScreen("search", "Search")
     object Favourites : BottomNavScreen("favourites", "Favourites")
     object Profile : BottomNavScreen("profile", "Profile")
 }
 
 @Composable
-fun CatgramApp(auth: FirebaseAuth, activity: Activity) {
+fun CatgramApp(
+    activity: ComponentActivity,
+    signInLauncher: ActivityResultLauncher<Intent>,
+    uiState: MainActivity.UiState
+) {
     val screens = listOf(
-        BottomNavScreen.Feed,
         BottomNavScreen.Search,
         BottomNavScreen.Favourites,
         BottomNavScreen.Profile,
     )
-    var selectedScreen by remember { mutableStateOf<BottomNavScreen>(BottomNavScreen.Feed) }
-    var loggedIn by remember { mutableStateOf(false) }
+    var selectedScreen by remember { mutableStateOf<BottomNavScreen>(BottomNavScreen.Search) }
+    //var loggedIn by remember { mutableStateOf(false) }
+    val signedIn = uiState.signedIn.value
+    //loggedIn = isSignedIn()
 
     Scaffold(
         bottomBar = {
-            if (loggedIn) {
+            if (signedIn) {
                 BottomNavigationBar(
                     screens = screens,
                     selectedScreen = selectedScreen,
@@ -51,19 +54,30 @@ fun CatgramApp(auth: FirebaseAuth, activity: Activity) {
             }
         }
     ) { innerPadding ->
-        Box(Modifier.fillMaxSize().padding(innerPadding)) {
-            if (!loggedIn) {
-                SignUpForm(auth, activity) { authResult ->
-                    loggedIn = authResult
+        Box(
+            Modifier
+                .fillMaxSize()
+                .padding(innerPadding)
+        ) {
+            if (!signedIn) {
+                StartScreen(uiState) {
+                    signInViaGoogle(activity, signInLauncher)
                 }
                 return@Box
             }
 
             when (selectedScreen) {
-                is BottomNavScreen.Feed -> FeedScreen()
                 is BottomNavScreen.Search -> SearchScreen()
                 is BottomNavScreen.Favourites -> FavouritesScreen()
-                is BottomNavScreen.Profile -> ProfileScreen()
+                is BottomNavScreen.Profile -> {
+                    val avatarUrl = GoogleSignIn.getLastSignedInAccount(activity)?.photoUrl
+                    Log.d("GDFR", "avater url: $avatarUrl")
+                    val user = Firebase.auth.currentUser ?: throw IllegalStateException("User unauthorized.")
+                    ProfileScreen(avatarUrl, user.displayName ?: "?", user.email ?: "?") {
+                        Firebase.auth.signOut()
+                        uiState.signedIn.value = false
+                    }
+                }
             }
         }
     }
@@ -98,27 +112,6 @@ fun BottomNavigationBar(
     }
 }
 
-// Screen Composables
-@Composable
-fun FeedScreen() {
-    Box(
-        modifier = Modifier.fillMaxSize(),
-        contentAlignment = Alignment.Center
-    ) {
-        Text("This is the Feed Screen")
-    }
-}
-
-@Composable
-fun SearchScreen() {
-    Box(
-        modifier = Modifier.fillMaxSize(),
-        contentAlignment = Alignment.Center
-    ) {
-        Text("This is the Search Screen")
-    }
-}
-
 @Composable
 fun FavouritesScreen() {
     Box(
@@ -126,101 +119,5 @@ fun FavouritesScreen() {
         contentAlignment = Alignment.Center
     ) {
         Text("This is the Favourites Screen")
-    }
-}
-
-@Composable
-fun ProfileScreen() {
-    Box(
-        modifier = Modifier.fillMaxSize(),
-        contentAlignment = Alignment.Center
-    ) {
-        Text("This is the Profile Screen")
-    }
-}
-
-@Composable
-fun SignUpForm(auth: FirebaseAuth, activity: Activity, onAuthStatusChanged: (Boolean) -> Unit) {
-    // Remember state for both the email and the password input fields
-    var email by remember { mutableStateOf("") }
-    var password by remember { mutableStateOf("") }
-    var validInput by remember { mutableStateOf(true) }
-
-    // Form content
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(horizontal = 48.dp)
-            .verticalScroll(rememberScrollState()),
-        verticalArrangement = Arrangement.Center,
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        // Email Text Field
-        OutlinedTextField(
-            value = email,
-            onValueChange = { email = it },
-            label = { Text(text = "Email") },
-            modifier = Modifier.fillMaxWidth(),
-            isError = !validInput
-        )
-
-        Spacer(modifier = Modifier.height(16.dp))
-
-        // Password Text Field
-        OutlinedTextField(
-            value = password,
-            onValueChange = { password = it },
-            label = { Text(text = "Password") },
-            modifier = Modifier.fillMaxWidth(),
-            visualTransformation = PasswordVisualTransformation(),
-            isError = !validInput
-        )
-
-        Spacer(modifier = Modifier.height(16.dp))
-
-        // Submit Button
-        Button(
-            onClick = {
-                validInput = email.isNotEmpty() && password.isNotEmpty()
-                if (validInput) {
-                    auth.createUserWithEmailAndPassword(email, password)
-                        .addOnCompleteListener(activity) { task ->
-                            if (task.isSuccessful) {
-                                // Sign in success, update UI with the signed-in user's information
-                                val user = auth.currentUser
-                                Toast.makeText(
-                                    activity,
-                                    "Authentication succeed. $user",
-                                    Toast.LENGTH_SHORT,
-                                ).show()
-                                onAuthStatusChanged(true)
-                            } else {
-                                // If sign in fails, display a message to the user.
-                                Log.d("GDFR", "${task.exception?.message}")
-                                Toast.makeText(
-                                    activity,
-                                    "Authentication failed. ${task.exception?.message}",
-                                    Toast.LENGTH_SHORT,
-                                ).show()
-                                onAuthStatusChanged(false)
-                            }
-                        }
-                }
-            },
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(50.dp)
-        ) {
-            Text(text = "Submit")
-        }
-
-        // Error message if fields are invalid
-        if (!validInput) {
-            Spacer(modifier = Modifier.height(8.dp))
-            Text(
-                text = "Please fill in both email and password.",
-                color = MaterialTheme.colorScheme.error
-            )
-        }
     }
 }
