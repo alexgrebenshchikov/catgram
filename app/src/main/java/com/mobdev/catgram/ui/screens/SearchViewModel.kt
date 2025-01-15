@@ -23,12 +23,11 @@ import com.mobdev.catgram.network.BreedInfo
 import com.mobdev.catgram.network.CatsData
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.collectLatest
-import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import androidx.datastore.preferences.core.stringPreferencesKey
+import com.google.firebase.auth.ktx.auth
+import com.google.firebase.ktx.Firebase
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.first
 import kotlinx.serialization.json.Json
@@ -62,13 +61,31 @@ class SearchViewModel(
 
     private val json = Json { ignoreUnknownKeys = true }
 
+    var scrollPositionIndex: Int = 0
+    var scrollPositionOffset: Int = 0
+
+    private val breedsKey: Preferences.Key<String>
+        get() {
+            val userUid =
+                Firebase.auth.currentUser?.uid ?: throw IllegalStateException("User unauthorized.")
+            return stringPreferencesKey(userUid)
+        }
+
 
     init {
         //loadMoreCatsItemsIfNeeded()
+        Log.d(TAG, "search vm init")
+        if (Firebase.auth.currentUser != null) {
+            loadChoosedBreeds()
+        }
+    }
+
+    fun loadChoosedBreeds() {
+        isLoading = true
         viewModelScope.launch(Dispatchers.IO) {
             val breedInfoList = catgramRepository.getBreedList()
             val breeds = breedInfoList.map { it.id }
-            breedIdToName = breedInfoList.associate { it.id to it.name }
+
             Log.d(TAG, "breeds: ${breeds}")
             context.dataStore.data.first().let { prefs ->
                 Log.d(TAG, "ds collect")
@@ -78,9 +95,13 @@ class SearchViewModel(
                 }
                 Log.d(TAG, "store: $breedsFromStore")
                 Log.d(TAG, "result: $result")
-                choosedBreeds = result
                 updateBreedsDataStore(result)
-                loadMoreCatsItemsIfNeeded()
+                withContext(Dispatchers.Main) {
+                    breedIdToName = breedInfoList.associate { it.id to it.name }
+                    choosedBreeds = result
+                    isLoading = false
+                    loadMoreCatsItemsIfNeeded()
+                }
             }
         }
     }
@@ -93,16 +114,29 @@ class SearchViewModel(
     }
 
     fun updateChoosedBreeds(breed: String, isChoosed: Boolean) {
-        choosedBreeds = choosedBreeds.plus(breed to isChoosed)
         viewModelScope.launch(Dispatchers.IO) {
             updateBreedsDataStore(choosedBreeds)
         }
+        choosedBreeds = choosedBreeds.plus(breed to isChoosed)
     }
 
     fun applyBreedsFilter() {
+        resetItems()
+    }
+
+    fun reset() {
+        resetItems()
+        choosedBreeds = mapOf()
+        breedIdToName = mapOf()
+        scrollPositionIndex = 0
+        scrollPositionOffset = 0
+    }
+
+    private fun resetItems() {
         items = listOf()
         itemsIds = mutableSetOf()
         isLoading = false
+        isAllCatsDataLoaded = false
         currentPage = 0
         loadingJob?.cancel()
     }
@@ -130,18 +164,17 @@ class SearchViewModel(
                 }
                 val newItems = catsData.filter { !itemsIds.contains(it.id) }
                 if (newItems.isEmpty()) {
-                    isAllCatsDataLoaded = true
                     withContext(Dispatchers.Main) {
+                        isAllCatsDataLoaded = true
                         isLoading = false
                     }
                     return@launch
                 }
-
-                itemsIds.addAll(newItems.map { it.id })
-                items = items + newItems
-                currentPage++
-                Log.d(TAG, "items size: ${items.size}")
                 withContext(Dispatchers.Main) {
+                    itemsIds.addAll(newItems.map { it.id })
+                    items = items + newItems
+                    Log.d(TAG, "items size: ${items.size}")
+                    currentPage++
                     isLoading = false
                 }
             } catch (error: Throwable) {
@@ -157,13 +190,13 @@ class SearchViewModel(
     private suspend fun updateBreedsDataStore(newValue: Map<String, Boolean>) {
         context.dataStore.updateData { prefs ->
             prefs.toMutablePreferences().apply {
-                set(BREEDS_KEY, json.encodeToJsonElement(newValue).toString())
+                set(breedsKey, json.encodeToJsonElement(newValue).toString())
             }
         }
     }
 
     private fun getBreedsFromStore(prefs: Preferences): Map<String, Boolean> {
-        return prefs[BREEDS_KEY]?.let {
+        return prefs[breedsKey]?.let {
             try {
                 json.decodeFromString<Map<String, Boolean>>(it)
             } catch (e: Throwable) {
@@ -181,6 +214,5 @@ class SearchViewModel(
             }
         }
         private val Context.dataStore: DataStore<Preferences> by preferencesDataStore("choosed-breeds")
-        private val BREEDS_KEY = stringPreferencesKey("name")
     }
 }

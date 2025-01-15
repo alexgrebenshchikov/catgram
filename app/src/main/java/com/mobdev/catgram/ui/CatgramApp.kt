@@ -9,22 +9,40 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.Saver
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.stringResource
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.google.android.gms.auth.api.signin.GoogleSignIn
 import com.google.firebase.auth.ktx.auth
 import com.google.firebase.ktx.Firebase
 import com.mobdev.catgram.MainActivity
+import com.mobdev.catgram.R
+import com.mobdev.catgram.TAG
 import com.mobdev.catgram.auth.signInViaGoogle
+import com.mobdev.catgram.ui.BottomNavScreen.Companion.FAVOURITES_SCREEN_LABEL
+import com.mobdev.catgram.ui.BottomNavScreen.Companion.PROFILE_SCREEN_LABEL
+import com.mobdev.catgram.ui.BottomNavScreen.Companion.SEARCH_SCREEN_LABEL
+import com.mobdev.catgram.ui.screens.FavouritesScreen
+import com.mobdev.catgram.ui.screens.FavouritesViewModel
 import com.mobdev.catgram.ui.screens.ProfileScreen
 import com.mobdev.catgram.ui.screens.SearchScreen
+import com.mobdev.catgram.ui.screens.SearchViewModel
 import com.mobdev.catgram.ui.screens.StartScreen
 
 sealed class BottomNavScreen(val route: String, val label: String) {
-    object Search : BottomNavScreen("search", "Search")
-    object Favourites : BottomNavScreen("favourites", "Favourites")
-    object Profile : BottomNavScreen("profile", "Profile")
+    data object Search : BottomNavScreen("search", SEARCH_SCREEN_LABEL)
+    data object Favourites : BottomNavScreen("favourites", FAVOURITES_SCREEN_LABEL)
+    data object Profile : BottomNavScreen("profile", PROFILE_SCREEN_LABEL)
+
+    companion object {
+        const val SEARCH_SCREEN_LABEL = "Search"
+        const val FAVOURITES_SCREEN_LABEL = "Favourites"
+        const val PROFILE_SCREEN_LABEL = "Profile"
+    }
 }
 
 @Composable
@@ -38,10 +56,26 @@ fun CatgramApp(
         BottomNavScreen.Favourites,
         BottomNavScreen.Profile,
     )
-    var selectedScreen by remember { mutableStateOf<BottomNavScreen>(BottomNavScreen.Search) }
-    //var loggedIn by remember { mutableStateOf(false) }
+
+    val customSaver = Saver<BottomNavScreen, String>(
+        save = {
+            it.label
+        },
+        restore = { when(it) {
+            SEARCH_SCREEN_LABEL -> BottomNavScreen.Search
+            FAVOURITES_SCREEN_LABEL -> BottomNavScreen.Favourites
+            PROFILE_SCREEN_LABEL -> BottomNavScreen.Profile
+            else -> throw IllegalStateException("Should not reach.")
+        } }
+    )
+
+    var selectedScreen by rememberSaveable(
+        stateSaver = customSaver
+    ) { mutableStateOf(BottomNavScreen.Search) }
     val signedIn = uiState.signedIn.value
-    //loggedIn = isSignedIn()
+
+    val favViewModel: FavouritesViewModel = viewModel()
+    val searchViewModel: SearchViewModel = viewModel(factory = SearchViewModel.factory)
 
     Scaffold(
         bottomBar = {
@@ -71,11 +105,21 @@ fun CatgramApp(
                 is BottomNavScreen.Favourites -> FavouritesScreen()
                 is BottomNavScreen.Profile -> {
                     val avatarUrl = GoogleSignIn.getLastSignedInAccount(activity)?.photoUrl
-                    Log.d("GDFR", "avater url: $avatarUrl")
-                    val user = Firebase.auth.currentUser ?: throw IllegalStateException("User unauthorized.")
-                    ProfileScreen(avatarUrl, user.displayName ?: "?", user.email ?: "?") {
+                    Log.d(TAG, "avater url: $avatarUrl")
+                    val user = Firebase.auth.currentUser
+                        ?: throw IllegalStateException("User unauthorized.")
+                    ProfileScreen(
+                        avatarUrl,
+                        user.displayName ?: stringResource(R.string.unknown_user_name),
+                        user.email ?: stringResource(
+                            R.string.unknown_email
+                        )
+                    ) {
+                        searchViewModel.reset()
+                        favViewModel.reset()
                         Firebase.auth.signOut()
                         uiState.signedIn.value = false
+                        selectedScreen = BottomNavScreen.Search
                     }
                 }
             }
@@ -109,15 +153,5 @@ fun BottomNavigationBar(
                 },
             )
         }
-    }
-}
-
-@Composable
-fun FavouritesScreen() {
-    Box(
-        modifier = Modifier.fillMaxSize(),
-        contentAlignment = Alignment.Center
-    ) {
-        Text("This is the Favourites Screen")
     }
 }
