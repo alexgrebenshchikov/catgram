@@ -28,6 +28,7 @@ import kotlinx.coroutines.withContext
 import androidx.datastore.preferences.core.stringPreferencesKey
 import com.google.firebase.auth.ktx.auth
 import com.google.firebase.ktx.Firebase
+import com.mobdev.catgram.auth.isSignedIn
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.first
 import kotlinx.serialization.json.Json
@@ -75,7 +76,7 @@ class SearchViewModel(
     init {
         //loadMoreCatsItemsIfNeeded()
         Log.d(TAG, "search vm init")
-        if (Firebase.auth.currentUser != null) {
+        if (isSignedIn()) {
             loadChoosedBreeds()
         }
     }

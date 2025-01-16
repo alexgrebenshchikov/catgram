@@ -10,6 +10,7 @@ import com.google.firebase.firestore.DocumentReference
 import com.google.firebase.firestore.ktx.firestore
 import com.google.firebase.ktx.Firebase
 import com.mobdev.catgram.TAG
+import com.mobdev.catgram.auth.isSignedIn
 import com.mobdev.catgram.network.BreedInfo
 import com.mobdev.catgram.network.CatsData
 
@@ -17,8 +18,11 @@ import com.mobdev.catgram.network.CatsData
 class FavouritesViewModel : ViewModel() {
     private val firestore = Firebase.firestore
     private lateinit var userDocRef: DocumentReference
+    private val likesColRef = firestore.collection("likes")
 
     var items by mutableStateOf<List<CatsData>>(listOf())
+        private set
+    var likes by mutableStateOf<Map<String, Long>>(mapOf())
         private set
 
     var scrollPositionIndex: Int = 0
@@ -26,13 +30,11 @@ class FavouritesViewModel : ViewModel() {
 
     init {
         Log.d(TAG, "fav vm init")
-        /*addToFavourites(
-            CatsData("id4", "dsds", listOf(BreedInfo("dsds", "dsdsd", "Dsdsdsf"))),
-            {})*/
-        //removeFromFavourites("id4", {})
-        if (Firebase.auth.currentUser != null) {
+        if (isSignedIn()) {
             initialize()
         }
+        ///decreaseLikesCounter(CatsData("id1", "sds", listOf()), {}, {})
+        //getLikesCount("id1", { Log.d(TAG, "res: $it")})
     }
 
     fun initialize() {
@@ -69,7 +71,10 @@ class FavouritesViewModel : ViewModel() {
             val snapshot = transaction.get(userDocRef)
             val currentFavourites =
                 snapshot.get(FAVOURITES_KEY)?.let { it as List<HashMap<String, Any>> }
-                    ?: return@runTransaction
+                    ?: run {
+                        onFailure()
+                        return@runTransaction
+                    }
             items = currentFavourites.toCatsDataList().filterNot { it.id == item.id }
             transaction.update(userDocRef, FAVOURITES_KEY, items)
         }.addOnSuccessListener {
@@ -102,11 +107,82 @@ class FavouritesViewModel : ViewModel() {
         return items.map { it.id }.contains(itemId)
     }
 
+    fun increaseLikesCounter(item: CatsData, onSuccess: () -> Unit, onFailure: () -> Unit) {
+        firestore.runTransaction { transaction ->
+            val likesDocRef = likesColRef.document(item.id)
+            val snapshot = transaction.get(likesDocRef)
+            val dataFromDb = snapshot.get(COUNTER_KEY)
+            if (dataFromDb != null) {
+                val updatedCounter = dataFromDb as Long + 1
+                likes = likes.plus(item.id to updatedCounter)
+                transaction.update(likesDocRef, COUNTER_KEY, updatedCounter)
+            } else {
+                likes = likes.plus(item.id to 1)
+                transaction.set(likesDocRef, hashMapOf(COUNTER_KEY to 1))
+            }
+        }.addOnSuccessListener {
+            Log.d(TAG, "increaseLikesCounter Transaction succeeded! $likes")
+            onSuccess()
+        }.addOnFailureListener { exception ->
+            likes[item.id]?.let {
+                likes = likes.plus(item.id to it - 1)
+            }
+            onFailure()
+            Log.e(TAG, "increaseLikesCounter Transaction failed: ${exception.message}")
+        }
+    }
+
+    fun decreaseLikesCounter(item: CatsData, onSuccess: () -> Unit, onFailure: () -> Unit) {
+        firestore.runTransaction { transaction ->
+            val likesDocRef = likesColRef.document(item.id)
+            val snapshot = transaction.get(likesDocRef)
+            val dataFromDb = snapshot.get(COUNTER_KEY)
+            if (dataFromDb != null) {
+                val updatedCounter = dataFromDb as Long - 1
+                likes = likes.plus(item.id to updatedCounter)
+                transaction.update(likesDocRef, COUNTER_KEY, updatedCounter)
+            } else {
+                onFailure()
+                return@runTransaction
+            }
+        }.addOnSuccessListener {
+            Log.d(TAG, "decrease LikesCounter Transaction succeeded! $likes")
+            onSuccess()
+        }.addOnFailureListener { exception ->
+            likes[item.id]?.let {
+                likes = likes.plus(item.id to it + 1)
+            }
+            onFailure()
+            Log.e(TAG, "increaseLikesCounter Transaction failed: ${exception.message}")
+        }
+    }
+
+    fun getLikesCount(itemId: String, onResult: (Long) -> Unit) {
+        likes[itemId]?.let {
+            Log.d(TAG, "getLikesCount cache hit")
+            onResult(it)
+            return
+        }
+        likesColRef.document(itemId).get()
+            .addOnSuccessListener { snapshot ->
+                Log.d(TAG, "getLikesCount succeded")
+                val dataFromDb = snapshot.get(COUNTER_KEY)?.let { it as? Long } ?: 0
+                likes = likes.plus(itemId to dataFromDb)
+                onResult(dataFromDb)
+            }
+            .addOnFailureListener {
+                Log.d(TAG, "getLikesCount failed")
+                onResult(0)
+            }
+    }
+
     fun reset() {
         items = listOf()
         scrollPositionIndex = 0
         scrollPositionOffset = 0
     }
+
+    //private fun addToFavourites
 
     private fun HashMap<String, Any>.toCatsData(): CatsData? {
         val id = get("id") as? String ?: return null
@@ -132,5 +208,6 @@ class FavouritesViewModel : ViewModel() {
 
     companion object {
         private const val FAVOURITES_KEY = "favourites"
+        private const val COUNTER_KEY = "counter"
     }
 }

@@ -23,6 +23,7 @@ import com.mobdev.catgram.MainActivity
 import com.mobdev.catgram.R
 import com.mobdev.catgram.TAG
 import com.mobdev.catgram.auth.signInViaGoogle
+import com.mobdev.catgram.auth.signOut
 import com.mobdev.catgram.ui.BottomNavScreen.Companion.FAVOURITES_SCREEN_LABEL
 import com.mobdev.catgram.ui.BottomNavScreen.Companion.PROFILE_SCREEN_LABEL
 import com.mobdev.catgram.ui.BottomNavScreen.Companion.SEARCH_SCREEN_LABEL
@@ -117,7 +118,7 @@ fun CatgramApp(
                     ) {
                         searchViewModel.reset()
                         favViewModel.reset()
-                        Firebase.auth.signOut()
+                        signOut()
                         uiState.signedIn.value = false
                         selectedScreen = BottomNavScreen.Search
                     }
