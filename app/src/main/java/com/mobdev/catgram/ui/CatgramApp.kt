@@ -7,6 +7,10 @@ import androidx.activity.result.ActivityResultLauncher
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.Saver
@@ -134,9 +138,7 @@ fun BottomNavigationBar(
     selectedScreen: BottomNavScreen,
     onItemSelected: (BottomNavScreen) -> Unit,
 ) {
-    NavigationBar(
-        containerColor = Color.White
-    ) {
+    NavigationBar {
         screens.forEach { screen ->
             NavigationBarItem(
                 selected = selectedScreen == screen,
@@ -145,11 +147,16 @@ fun BottomNavigationBar(
                     Text(screen.label)
                 },
                 icon = {
-                    // Replace with actual icons if needed
-                    if (selectedScreen == screen) {
-                        Text("★")
-                    } else {
-                        Text("☆")
+                    when(screen) {
+                        BottomNavScreen.Favourites -> {
+                            Icon(imageVector = Icons.Default.Star, contentDescription = null)
+                        }
+                        BottomNavScreen.Profile -> {
+                            Icon(imageVector = Icons.Default.Person, contentDescription = null)
+                        }
+                        BottomNavScreen.Search -> {
+                            Icon(imageVector = Icons.Default.Search, contentDescription = null)
+                        }
                     }
                 },
             )

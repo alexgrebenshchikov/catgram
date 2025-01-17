@@ -8,7 +8,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
@@ -26,7 +25,6 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
@@ -65,7 +63,7 @@ fun SearchScreen() {
     val bottomSheetState = rememberModalBottomSheetState(
         skipPartiallyExpanded = true // Prevent half-expanded state
     )
-    var bottomSheetOpened by remember { mutableStateOf(false) }
+    var bottomSheetOpened by rememberSaveable { mutableStateOf(false) }
 
     Box(
         modifier = Modifier
@@ -80,7 +78,8 @@ fun SearchScreen() {
                     favViewModel.removeFromFavourites(item, onSuccess, onFailure)
                 }
             },
-            checkIsFavourite = { id -> favViewModel.checkInFavourites(id) })
+            checkIsFavourite = { id -> favViewModel.checkInFavourites(id) },
+            getLikesCount = { id, onSuccess -> favViewModel.getLikesCount(id, onSuccess)})
 
         // Trigger loading of more data when we reach the end of the list
         LaunchedEffect(listState) {
@@ -119,6 +118,7 @@ fun SearchScreen() {
                 onDismissRequest = {
                     bottomSheetOpened = false
                     searchViewModel.applyBreedsFilter()
+                    favViewModel.refreshData()
                 },
                 modifier = Modifier.padding(top = 8.dp)
             ) {

@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
@@ -25,6 +26,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -55,7 +57,8 @@ fun CatList(
     isLoading: Boolean,
     listState: LazyListState,
     onFavClick: (Boolean, CatsData, () -> Unit, () -> Unit) -> Unit,
-    checkIsFavourite: (String) -> Boolean
+    checkIsFavourite: (String) -> Boolean,
+    getLikesCount: ((String, (Long) -> Unit) -> Long)?
 ) {
     LazyColumn(
         state = listState,
@@ -63,7 +66,7 @@ fun CatList(
         contentPadding = PaddingValues(16.dp),
     ) {
         items(itemList) { item ->
-            CatCard(item, onFavClick, checkIsFavourite)
+            CatCard(item, onFavClick, checkIsFavourite, getLikesCount)
         }
 
         if (isLoading) {
@@ -82,8 +85,19 @@ fun CatList(
 }
 
 @Composable
-fun CatCard(item: CatsData, onFavClick: (Boolean, CatsData, () -> Unit, () -> Unit) -> Unit, checkIsFavourite: (String) -> Boolean) {
+fun CatCard(
+    item: CatsData,
+    onFavClick: (Boolean, CatsData, () -> Unit, () -> Unit) -> Unit,
+    checkIsFavourite: (String) -> Boolean,
+    getLikesCount: ((String, (Long) -> Unit) -> Long)?
+) {
     val isActivated = remember { mutableStateOf(checkIsFavourite(item.id)) }
+    val likesCounter = getLikesCount?.let { f ->
+        val likesCounter = remember { mutableLongStateOf(0) }
+        val likes = f(item.id) { likesCounter.longValue = it }
+        likesCounter.longValue = likes
+        likesCounter
+    }
 
     Card(
         modifier = Modifier
@@ -104,7 +118,7 @@ fun CatCard(item: CatsData, onFavClick: (Boolean, CatsData, () -> Unit, () -> Un
         item.breeds.getNameAndDescription()?.let {
             ExpandableHeadingWithDetail(it.first, it.second)
         }
-        FavouritesButton(onFavClick, isActivated, item)
+        FavouritesButton(onFavClick, isActivated, likesCounter, item)
     }
 }
 
@@ -166,23 +180,31 @@ fun ExpandableHeadingWithDetail(heading: String, description: String) {
 fun FavouritesButton(
     onFavClick: (Boolean, CatsData, () -> Unit, () -> Unit) -> Unit,
     isActivated: MutableState<Boolean>,
+    likesCounter: MutableState<Long>?,
     item: CatsData
 ) {
     var isEnabled by rememberSaveable { mutableStateOf(true) }
 
     val color = if (isActivated.value) Color.Yellow else Color.White
-    Box(modifier = Modifier
-        .fillMaxWidth()
-        .padding(horizontal = 8.dp)) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
         IconButton(
             enabled = isEnabled,
             onClick = {
+                val initialState = isActivated.value
                 isActivated.value = !isActivated.value
                 isEnabled = false
+                likesCounter.updateState(initialState)
+
                 onFavClick(isActivated.value, item, {
                     isEnabled = true
                 }, {
                     isActivated.value = !isActivated.value
+                    likesCounter.updateState(!initialState)
                     isEnabled = true
                 })
             }
@@ -194,6 +216,28 @@ fun FavouritesButton(
                 modifier = Modifier.size(20.dp)
             )
         }
+
+        if (likesCounter != null) {
+            Text(
+                text = "${likesCounter.value}",
+                style = MaterialTheme.typography.bodySmall,
+                textAlign = TextAlign.Start,
+                fontSize = 14.sp,
+                modifier = Modifier.wrapContentSize()
+            )
+        }
+    }
+}
+
+private fun MutableState<Long>?.updateState(initialActState: Boolean) {
+    if (this == null) {
+        return
+    }
+
+    if (initialActState) {
+        value -= 1
+    } else {
+        value += 1
     }
 }
 
@@ -201,8 +245,9 @@ fun FavouritesButton(
 @Composable
 fun FavouritesButtonPreview() {
     CatgramTheme {
-        val c = remember {  mutableStateOf(false) }
-        FavouritesButton({ b, c, a, d -> }, c, CatsData("Dsds", "dsds", listOf()))
+        val c = remember { mutableStateOf(false) }
+        val l = remember { mutableLongStateOf(0L) }
+        FavouritesButton({ b, c, a, d -> }, c, l, CatsData("Dsds", "dsds", listOf()))
     }
 }
 
@@ -212,8 +257,9 @@ fun CatCardPreview() {
     CatgramTheme {
         CatCard(
             CatsData("id", "url", listOf(BreedInfo("id", "name", "description"))),
-            {a, b, c, d -> } ,
-            {c -> true}
+            { a, b, c, d -> },
+            { c -> true },
+            { _, _ -> 0 }
         )
     }
 }

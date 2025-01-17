@@ -129,8 +129,6 @@ class SearchViewModel(
         resetItems()
         choosedBreeds = mapOf()
         breedIdToName = mapOf()
-        scrollPositionIndex = 0
-        scrollPositionOffset = 0
     }
 
     private fun resetItems() {
@@ -140,6 +138,8 @@ class SearchViewModel(
         isAllCatsDataLoaded = false
         currentPage = 0
         loadingJob?.cancel()
+        scrollPositionIndex = 0
+        scrollPositionOffset = 0
     }
 
     fun toBreedName(breedId: String): String {
@@ -152,8 +152,8 @@ class SearchViewModel(
 
         loadingJob = viewModelScope.launch(Dispatchers.IO) {
             try {
-                //val catsData = catgramRepository.getCatsData(pageSize, choosedBreeds.filter { it.value }.keys.toList(), currentPage)
-                delay(100)
+                val catsData = catgramRepository.getCatsData(pageSize, choosedBreeds.filter { it.value }.keys.toList(), currentPage)
+                /*delay(100)
                 val catsData = Array(pageSize) {
                     CatsData(
                         "$currentPage $it",
@@ -162,7 +162,7 @@ class SearchViewModel(
                             BreedInfo("beng", "Bengal", "some long long long desciprtion")
                         )
                     )
-                }
+                }*/
                 val newItems = catsData.filter { !itemsIds.contains(it.id) }
                 if (newItems.isEmpty()) {
                     withContext(Dispatchers.Main) {
