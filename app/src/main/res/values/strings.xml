@@ -9,4 +9,5 @@
     <string name="unknown_user_name">Unknown user</string>
     <string name="unknown_email">Unknown email</string>
     <string name="favourites_screen_placeholder">You do not have favourites yet.</string>
+    <string name="search_screen_error_message">Unable to load data. Please, check your network connection and try again</string>
 </resources>

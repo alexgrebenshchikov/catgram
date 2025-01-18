@@ -1,9 +1,7 @@
 package com.mobdev.catgram.ui.screens
 
 import android.annotation.SuppressLint
-import androidx.activity.ComponentActivity
 import androidx.compose.foundation.Image
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -18,7 +16,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -88,7 +85,7 @@ fun StartScreen(
                 Text(
                     text = "Sign in with Google Account",
                     style = MaterialTheme.typography.bodyMedium,
-                    color = Color.White, // Adjust text color accordingly
+                    color = Color.White,
                     modifier = Modifier.weight(1f)
                 )
                 Icon(

@@ -34,8 +34,6 @@ class FavouritesViewModel : ViewModel() {
         if (isSignedIn()) {
             initialize()
         }
-        ///decreaseLikesCounter(CatsData("id1", "sds", listOf()), {}, {})
-        //getLikesCount("id1", { Log.d(TAG, "res: $it")})
     }
 
     fun initialize() {
@@ -81,7 +79,7 @@ class FavouritesViewModel : ViewModel() {
             }
             .addOnFailureListener { e ->
                 onComplete()
-                Log.w(TAG, "fetchFavourites errort", e)
+                Log.e(TAG, "fetchFavourites error", e)
             }
     }
 
@@ -89,10 +87,10 @@ class FavouritesViewModel : ViewModel() {
         return items.map { it.id }.contains(itemId)
     }
 
-    fun getLikesCount(itemId: String, onSuccess: (Long) -> Unit): Long {
+    fun getLikesCount(itemId: String, onSuccess: (Long) -> Unit) {
         likes[itemId]?.let {
-            Log.d(TAG, "getLikesCount cache hit")
-            return it
+            onSuccess(it)
+            return
         }
 
         likesColRef.document(itemId).get()
@@ -105,7 +103,6 @@ class FavouritesViewModel : ViewModel() {
             .addOnFailureListener {
                 Log.d(TAG, "getLikesCount failed")
             }
-        return 0
     }
 
     fun reset() {
@@ -179,7 +176,7 @@ class FavouritesViewModel : ViewModel() {
             return
         }
 
-        val newItems = currentFavourites.toCatsDataList().filterNot { it.id == item.id }
+        val newItems = currentFavourites.toCatsDataList() - item
         transaction.update(userDocRef, FAVOURITES_KEY, newItems)
 
         items = newItems

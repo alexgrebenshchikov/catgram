@@ -34,12 +34,6 @@ import kotlinx.coroutines.flow.first
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.encodeToJsonElement
 
-//sealed interface SearchUiState {
-//    data object Loading: SearchUiState
-//    data class Succeed(val data: List<CatsData>): SearchUiState
-//    data class Failed(val error: Throwable): SearchUiState
-//}
-
 class SearchViewModel(
     private val catgramRepository: CatgramRepository,
     private val context: Application
@@ -51,7 +45,7 @@ class SearchViewModel(
         private set
     private var itemsIds = mutableSetOf<String>()
 
-    var isLoading by mutableStateOf(false)
+    var uiState: SearchUiState by mutableStateOf(SearchUiState.Ready)
         private set
     private var loadingJob: Job? = null
     private var isAllCatsDataLoaded = false
@@ -74,7 +68,6 @@ class SearchViewModel(
 
 
     init {
-        //loadMoreCatsItemsIfNeeded()
         Log.d(TAG, "search vm init")
         if (isSignedIn()) {
             loadChoosedBreeds()
@@ -82,34 +75,39 @@ class SearchViewModel(
     }
 
     fun loadChoosedBreeds() {
-        isLoading = true
+        uiState = SearchUiState.Loading
         viewModelScope.launch(Dispatchers.IO) {
-            val breedInfoList = catgramRepository.getBreedList()
-            val breeds = breedInfoList.map { it.id }
+            try {
+                val breedInfoList = catgramRepository.getBreedList()
+                val breeds = breedInfoList.map { it.id }
 
-            Log.d(TAG, "breeds: ${breeds}")
-            context.dataStore.data.first().let { prefs ->
-                Log.d(TAG, "ds collect")
-                val breedsFromStore = getBreedsFromStore(prefs)
-                val result = breeds.associateWith { false }.let {
-                    it.plus(breedsFromStore.filter { entry -> breeds.contains(entry.key) && entry.value })
+                context.dataStore.data.first().let { prefs ->
+                    val breedsFromStore = getBreedsFromStore(prefs)
+                    val result = breeds.associateWith { false }.let {
+                        it.plus(breedsFromStore.filter { entry -> breeds.contains(entry.key) && entry.value })
+                    }
+                    Log.d(TAG, "store: $breedsFromStore")
+                    Log.d(TAG, "result: $result")
+                    updateBreedsDataStore(result)
+                    withContext(Dispatchers.Main) {
+                        breedIdToName = breedInfoList.associate { it.id to it.name }
+                        choosedBreeds = result
+                        uiState = SearchUiState.Ready
+                        loadMoreCatsItemsIfNeeded()
+                    }
                 }
-                Log.d(TAG, "store: $breedsFromStore")
-                Log.d(TAG, "result: $result")
-                updateBreedsDataStore(result)
+            } catch (e: Throwable) {
+                Log.d(TAG, "load choosed breeds failed: ${e.message}")
                 withContext(Dispatchers.Main) {
-                    breedIdToName = breedInfoList.associate { it.id to it.name }
-                    choosedBreeds = result
-                    isLoading = false
-                    loadMoreCatsItemsIfNeeded()
+                    uiState = SearchUiState.Error
                 }
             }
         }
     }
 
     fun loadMoreCatsItemsIfNeeded() {
-        Log.d(TAG, "loadMoreCatsItemsIfNeeded page: $currentPage, isLoading: $isLoading")
-        if (!isLoading && !isAllCatsDataLoaded) {
+        Log.d(TAG, "loadMoreCatsItemsIfNeeded page: $currentPage, uiState: $uiState")
+        if (uiState == SearchUiState.Ready && !isAllCatsDataLoaded && choosedBreeds.isNotEmpty()) {
             loadCatsDataPage()
         }
     }
@@ -123,6 +121,11 @@ class SearchViewModel(
 
     fun applyBreedsFilter() {
         resetItems()
+        if (choosedBreeds.isEmpty()) {
+            loadChoosedBreeds()
+        } else {
+            loadMoreCatsItemsIfNeeded()
+        }
     }
 
     fun reset() {
@@ -132,9 +135,9 @@ class SearchViewModel(
     }
 
     private fun resetItems() {
+        uiState = SearchUiState.Ready
         items = listOf()
         itemsIds = mutableSetOf()
-        isLoading = false
         isAllCatsDataLoaded = false
         currentPage = 0
         loadingJob?.cancel()
@@ -148,11 +151,15 @@ class SearchViewModel(
 
     private fun loadCatsDataPage() {
         Log.d(TAG, "loadCatsDataPage")
-        isLoading = true
+        uiState = SearchUiState.Loading
 
         loadingJob = viewModelScope.launch(Dispatchers.IO) {
             try {
-                val catsData = catgramRepository.getCatsData(pageSize, choosedBreeds.filter { it.value }.keys.toList(), currentPage)
+                val catsData = catgramRepository.getCatsData(
+                    pageSize,
+                    choosedBreeds.filter { it.value }.keys.toList(),
+                    currentPage
+                )
                 /*delay(100)
                 val catsData = Array(pageSize) {
                     CatsData(
@@ -167,7 +174,7 @@ class SearchViewModel(
                 if (newItems.isEmpty()) {
                     withContext(Dispatchers.Main) {
                         isAllCatsDataLoaded = true
-                        isLoading = false
+                        uiState = SearchUiState.Ready
                     }
                     return@launch
                 }
@@ -176,13 +183,13 @@ class SearchViewModel(
                     items = items + newItems
                     Log.d(TAG, "items size: ${items.size}")
                     currentPage++
-                    isLoading = false
+                    uiState = SearchUiState.Ready
                 }
             } catch (error: Throwable) {
                 //SearchUiState.Failed(error)
-                Log.d(TAG, "failed: ${error.message}")
+                Log.d(TAG, "load cats data failed: ${error.message}")
                 withContext(Dispatchers.Main) {
-                    isLoading = false
+                    uiState = SearchUiState.Error
                 }
             }
         }
@@ -215,5 +222,11 @@ class SearchViewModel(
             }
         }
         private val Context.dataStore: DataStore<Preferences> by preferencesDataStore("choosed-breeds")
+    }
+
+    sealed interface SearchUiState {
+        data object Ready: SearchUiState
+        data object Loading: SearchUiState
+        data object Error: SearchUiState
     }
 }

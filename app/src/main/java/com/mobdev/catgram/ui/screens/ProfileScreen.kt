@@ -20,6 +20,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
@@ -55,7 +56,6 @@ fun ProfileScreen(
             modifier = Modifier
                 .size(150.dp)
                 .clip(CircleShape)
-                .border(2.dp, MaterialTheme.colorScheme.primary, CircleShape),
         )
 
         Spacer(modifier = Modifier.height(24.dp))
@@ -83,7 +83,7 @@ fun ProfileScreen(
             contentPadding = PaddingValues(horizontal = 24.dp, vertical = 12.dp),
             modifier = Modifier.fillMaxWidth(0.5f)
         ) {
-            Text(text = stringResource(R.string.sign_out_button_text))
+            Text(text = stringResource(R.string.sign_out_button_text), color = Color.White)
         }
     }
 }

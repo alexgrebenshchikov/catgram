@@ -51,21 +51,25 @@ import com.mobdev.catgram.network.CatsData
 import com.mobdev.catgram.ui.theme.CatgramTheme
 import com.mobdev.catgram.utils.getNameAndDescription
 
+typealias FavClickCallback = (Boolean, CatsData, () -> Unit, () -> Unit) -> Unit
+typealias CheckIsFavCallback = (String) -> Boolean
+typealias GetLikesCountCallback = ((String, (Long) -> Unit) -> Unit)?
+
 @Composable
 fun CatList(
     itemList: List<CatsData>,
     isLoading: Boolean,
     listState: LazyListState,
-    onFavClick: (Boolean, CatsData, () -> Unit, () -> Unit) -> Unit,
-    checkIsFavourite: (String) -> Boolean,
-    getLikesCount: ((String, (Long) -> Unit) -> Long)?
+    onFavClick: FavClickCallback,
+    checkIsFavourite: CheckIsFavCallback,
+    getLikesCount: GetLikesCountCallback
 ) {
     LazyColumn(
         state = listState,
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(16.dp),
     ) {
-        items(itemList) { item ->
+        items(itemList, key = { it.id }) { item ->
             CatCard(item, onFavClick, checkIsFavourite, getLikesCount)
         }
 
@@ -87,15 +91,14 @@ fun CatList(
 @Composable
 fun CatCard(
     item: CatsData,
-    onFavClick: (Boolean, CatsData, () -> Unit, () -> Unit) -> Unit,
-    checkIsFavourite: (String) -> Boolean,
-    getLikesCount: ((String, (Long) -> Unit) -> Long)?
+    onFavClick: FavClickCallback,
+    checkIsFavourite: CheckIsFavCallback,
+    getLikesCount: GetLikesCountCallback?
 ) {
     val isActivated = remember { mutableStateOf(checkIsFavourite(item.id)) }
     val likesCounter = getLikesCount?.let { f ->
         val likesCounter = remember { mutableLongStateOf(0) }
-        val likes = f(item.id) { likesCounter.longValue = it }
-        likesCounter.longValue = likes
+        f(item.id) { likesCounter.longValue = it }
         likesCounter
     }
 
@@ -124,10 +127,8 @@ fun CatCard(
 
 @Composable
 fun ExpandableHeadingWithDetail(heading: String, description: String) {
-    // State variable to track whether the detailed text is expanded or collapsed
     var isExpanded by rememberSaveable { mutableStateOf(false) }
 
-    // Animation for rotating the arrow
     val arrowRotationAngle by animateFloatAsState(
         targetValue = if (isExpanded) 180f else 0f,
         label = "arrow rotation"
@@ -138,19 +139,16 @@ fun ExpandableHeadingWithDetail(heading: String, description: String) {
             .fillMaxWidth()
             .padding(horizontal = 8.dp)
     ) {
-        // Heading row with title and button
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Heading text
             Text(
                 text = heading,
                 style = MaterialTheme.typography.titleMedium,
                 modifier = Modifier.weight(1f) // Take up available space in the row
             )
 
-            // Expand/Collapse button with arrow
             IconButton(onClick = { isExpanded = !isExpanded }) {
                 Icon(
                     imageVector = Icons.Default.ArrowDropDown,
@@ -162,7 +160,6 @@ fun ExpandableHeadingWithDetail(heading: String, description: String) {
             }
         }
 
-        // Detailed description text - shown/hidden based on `isExpanded` state
         AnimatedVisibility(visible = isExpanded) {
             Text(
                 text = description,
@@ -178,7 +175,7 @@ fun ExpandableHeadingWithDetail(heading: String, description: String) {
 
 @Composable
 fun FavouritesButton(
-    onFavClick: (Boolean, CatsData, () -> Unit, () -> Unit) -> Unit,
+    onFavClick: FavClickCallback,
     isActivated: MutableState<Boolean>,
     likesCounter: MutableState<Long>?,
     item: CatsData
@@ -200,7 +197,7 @@ fun FavouritesButton(
                 isEnabled = false
                 likesCounter.updateState(initialState)
 
-                onFavClick(isActivated.value, item, {
+                onFavClick(!initialState, item, {
                     isEnabled = true
                 }, {
                     isActivated.value = !isActivated.value
@@ -247,7 +244,7 @@ fun FavouritesButtonPreview() {
     CatgramTheme {
         val c = remember { mutableStateOf(false) }
         val l = remember { mutableLongStateOf(0L) }
-        FavouritesButton({ b, c, a, d -> }, c, l, CatsData("Dsds", "dsds", listOf()))
+        FavouritesButton({ _, _, _, _ -> }, c, l, CatsData("Dsds", "dsds", listOf()))
     }
 }
 
@@ -257,8 +254,8 @@ fun CatCardPreview() {
     CatgramTheme {
         CatCard(
             CatsData("id", "url", listOf(BreedInfo("id", "name", "description"))),
-            { a, b, c, d -> },
-            { c -> true },
+            { _, _, _, _ -> },
+            { true },
             { _, _ -> 0 }
         )
     }

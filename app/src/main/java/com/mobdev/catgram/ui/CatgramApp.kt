@@ -110,7 +110,6 @@ fun CatgramApp(
                 is BottomNavScreen.Favourites -> FavouritesScreen()
                 is BottomNavScreen.Profile -> {
                     val avatarUrl = GoogleSignIn.getLastSignedInAccount(activity)?.photoUrl
-                    Log.d(TAG, "avater url: $avatarUrl")
                     val user = Firebase.auth.currentUser
                         ?: throw IllegalStateException("User unauthorized.")
                     ProfileScreen(
@@ -138,7 +137,10 @@ fun BottomNavigationBar(
     selectedScreen: BottomNavScreen,
     onItemSelected: (BottomNavScreen) -> Unit,
 ) {
-    NavigationBar {
+    NavigationBar(
+        containerColor = MaterialTheme.colorScheme.background
+    ) {
+        NavigationBarItemDefaults.colors()
         screens.forEach { screen ->
             NavigationBarItem(
                 selected = selectedScreen == screen,

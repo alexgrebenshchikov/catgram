@@ -11,10 +11,12 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.FloatingActionButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
@@ -31,6 +33,7 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -48,7 +51,9 @@ fun SearchScreen() {
     val favViewModel: FavouritesViewModel = viewModel()
 
     val itemList = searchViewModel.items
-    val isLoading = searchViewModel.isLoading
+    Log.d(TAG, "uiState: ${searchViewModel.uiState}")
+    val isLoading = searchViewModel.uiState == SearchViewModel.SearchUiState.Loading
+    val isError = searchViewModel.uiState == SearchViewModel.SearchUiState.Error
     val listState = rememberLazyListState(
         initialFirstVisibleItemIndex = searchViewModel.scrollPositionIndex,
         initialFirstVisibleItemScrollOffset = searchViewModel.scrollPositionOffset
@@ -64,6 +69,7 @@ fun SearchScreen() {
         skipPartiallyExpanded = true // Prevent half-expanded state
     )
     var bottomSheetOpened by rememberSaveable { mutableStateOf(false) }
+    val breedsNotLoaded = searchViewModel.choosedBreeds.isEmpty()
 
     Box(
         modifier = Modifier
@@ -79,21 +85,32 @@ fun SearchScreen() {
                 }
             },
             checkIsFavourite = { id -> favViewModel.checkInFavourites(id) },
-            getLikesCount = { id, onSuccess -> favViewModel.getLikesCount(id, onSuccess)})
+            getLikesCount = { id, onSuccess -> favViewModel.getLikesCount(id, onSuccess)} )
+
+        if (isError) {
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = stringResource(R.string.search_screen_error_message),
+                    style = MaterialTheme.typography.titleMedium,
+                    modifier = Modifier.fillMaxWidth(),
+                    textAlign = TextAlign.Center,
+                )
+            }
+        }
 
         // Trigger loading of more data when we reach the end of the list
         LaunchedEffect(listState) {
             snapshotFlow { listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index }
                 .collectLatest { index ->
                     Log.d(TAG, "index: $index")
-                    if (searchViewModel.choosedBreeds.isEmpty()) {
+
+                    if (index == null) {
                         return@collectLatest
                     }
 
-                    if (index == null) {
-                        searchViewModel.loadMoreCatsItemsIfNeeded()
-                        return@collectLatest
-                    }
                     if (index >= searchViewModel.items.size - LOADING_OFFSET) {
                         searchViewModel.loadMoreCatsItemsIfNeeded()
                     }
@@ -102,12 +119,18 @@ fun SearchScreen() {
 
         FloatingActionButton(
             onClick = {
-                bottomSheetOpened = true
+                if (breedsNotLoaded) {
+                    searchViewModel.applyBreedsFilter()
+                    favViewModel.refreshData()
+                } else {
+                    bottomSheetOpened = true
+                }
             },
             modifier = Modifier.padding(8.dp)
         ) {
+            FloatingActionButtonDefaults.containerColor
             Icon(
-                imageVector = Icons.Default.Search,
+                imageVector = if (breedsNotLoaded) Icons.Default.Refresh else Icons.Default.Search,
                 contentDescription = "Open Bottom Sheet"
             )
         }
