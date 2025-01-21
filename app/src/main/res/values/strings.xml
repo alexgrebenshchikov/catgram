@@ -12,4 +12,5 @@
     <string name="search_screen_error_message">Unable to load data. Please, check your network connection and try again</string>
     <string name="default_notification_title">Catgram</string>
     <string name="default_notification_body">Hello!</string>
+    <string name="reminder_notification_text">It\'s time to watch some cats!</string>
 </resources>

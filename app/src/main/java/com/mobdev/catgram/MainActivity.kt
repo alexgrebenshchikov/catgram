@@ -14,9 +14,11 @@ import androidx.activity.viewModels
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.mutableStateOf
 import androidx.core.content.ContextCompat
+import androidx.work.ExistingWorkPolicy
+import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.WorkManager
 import com.google.android.gms.tasks.OnCompleteListener
 import com.google.firebase.auth.ktx.auth
-import com.google.firebase.firestore.ktx.firestore
 import com.google.firebase.ktx.Firebase
 import com.google.firebase.messaging.FirebaseMessaging
 import com.mobdev.catgram.auth.SignInResult
@@ -26,6 +28,8 @@ import com.mobdev.catgram.ui.CatgramApp
 import com.mobdev.catgram.ui.screens.FavouritesViewModel
 import com.mobdev.catgram.ui.screens.SearchViewModel
 import com.mobdev.catgram.ui.theme.CatgramTheme
+import com.mobdev.catgram.worker.OpenAppReminderWorker
+import java.util.concurrent.TimeUnit
 
 
 class MainActivity : ComponentActivity() {
@@ -47,6 +51,8 @@ class MainActivity : ComponentActivity() {
         Log.d(TAG, "${Firebase.auth.currentUser?.uid}")
         uiState.signedIn.value = isSignedIn()
         askNotificationPermission()
+        scheduleOpenAppReminder()
+        //getFCMToken()
         enableEdgeToEdge()
         setContent {
             CatgramTheme {
@@ -102,6 +108,22 @@ class MainActivity : ComponentActivity() {
             Log.d(TAG, msg)
             Toast.makeText(baseContext, msg, Toast.LENGTH_SHORT).show()
         })
+    }
+
+    private fun scheduleOpenAppReminder() {
+        val duration: Long = 3
+        val unit = TimeUnit.DAYS
+
+        val workBuilder = OneTimeWorkRequestBuilder<OpenAppReminderWorker>()
+            .setInitialDelay(duration, unit)
+            .build()
+
+        val workManager = WorkManager.getInstance(this.applicationContext)
+        workManager.enqueueUniqueWork(
+            "open_app_reminder",
+            ExistingWorkPolicy.REPLACE,
+            workBuilder
+        )
     }
 
     data class UiState(
