@@ -10,4 +10,6 @@
     <string name="unknown_email">Unknown email</string>
     <string name="favourites_screen_placeholder">You do not have favourites yet.</string>
     <string name="search_screen_error_message">Unable to load data. Please, check your network connection and try again</string>
+    <string name="default_notification_title">Catgram</string>
+    <string name="default_notification_body">Hello!</string>
 </resources>
