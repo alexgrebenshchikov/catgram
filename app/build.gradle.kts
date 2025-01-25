@@ -1,3 +1,6 @@
+import java.io.FileInputStream
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -14,10 +17,24 @@ android {
         applicationId = "com.mobdev.catgram"
         minSdk = 24
         targetSdk = 34
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = 2
+        versionName = "1.1"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+    }
+
+    signingConfigs {
+        create("release") {
+            val keystorePropertiesFile = rootProject.file("release-signing.properties")
+            val keystoreProperties = Properties()
+
+            keystoreProperties.load(FileInputStream(keystorePropertiesFile))
+
+            storeFile  = file(keystoreProperties["storeFile"] as String)
+            storePassword =  keystoreProperties["storePassword"] as String
+            keyAlias = keystoreProperties["keyAlias"] as String
+            keyPassword = keystoreProperties["keyPassword"] as String
+        }
     }
 
     buildTypes {
@@ -27,7 +44,7 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.getByName("release")
         }
     }
     compileOptions {
@@ -76,10 +93,13 @@ dependencies {
     // Datastore
     implementation(libs.androidx.datastore)
     implementation(libs.androidx.datastore.preferences)
+
     implementation(libs.firebase.messaging.ktx)
     implementation(libs.androidx.work.runtime.ktx)
-
     implementation(libs.guava)
+
+    implementation(libs.appupdate)
+    implementation(libs.review)
 
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)

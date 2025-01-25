@@ -24,6 +24,7 @@ import com.google.android.gms.auth.api.signin.GoogleSignIn
 import com.google.firebase.auth.ktx.auth
 import com.google.firebase.ktx.Firebase
 import com.mobdev.catgram.MainActivity
+import com.mobdev.catgram.MainViewModel
 import com.mobdev.catgram.R
 import com.mobdev.catgram.TAG
 import com.mobdev.catgram.auth.signInViaGoogle
@@ -37,6 +38,7 @@ import com.mobdev.catgram.ui.screens.ProfileScreen
 import com.mobdev.catgram.ui.screens.SearchScreen
 import com.mobdev.catgram.ui.screens.SearchViewModel
 import com.mobdev.catgram.ui.screens.StartScreen
+import kotlinx.coroutines.launch
 
 sealed class BottomNavScreen(val route: String, val label: String) {
     data object Search : BottomNavScreen("search", SEARCH_SCREEN_LABEL)
@@ -81,8 +83,13 @@ fun CatgramApp(
 
     val favViewModel: FavouritesViewModel = viewModel()
     val searchViewModel: SearchViewModel = viewModel(factory = SearchViewModel.factory)
+    val mainViewModel: MainViewModel = viewModel()
+
+    val snackBarHostState = remember { SnackbarHostState() }
+    val scope = rememberCoroutineScope()
 
     Scaffold(
+        snackbarHost = { SnackbarHost(hostState = snackBarHostState) },
         bottomBar = {
             if (signedIn) {
                 BottomNavigationBar(
@@ -125,6 +132,30 @@ fun CatgramApp(
                         uiState.signedIn.value = false
                         selectedScreen = BottomNavScreen.Search
                     }
+                }
+            }
+        }
+
+        val snackBarText = stringResource(R.string.downloading_completed)
+        val installButtonText = stringResource(R.string.button_install)
+
+        LaunchedEffect(uiState.needToShowSnackbar.value) {
+            if (uiState.needToShowSnackbar.value) {
+                snackBarHostState.showSnackbar(
+                    message = snackBarText,
+                    withDismissAction = true,
+                    actionLabel = installButtonText,
+                ).let { snackbarResult ->
+                    when(snackbarResult) {
+                        SnackbarResult.Dismissed -> {
+                            Log.d(TAG, "install dismissed")
+                        }
+                        SnackbarResult.ActionPerformed -> {
+                            Log.d(TAG, "install acquired")
+                            mainViewModel.completeUpdateRequested()
+                        }
+                    }
+                    uiState.needToShowSnackbar.value = false
                 }
             }
         }

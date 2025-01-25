@@ -13,4 +13,6 @@
     <string name="default_notification_title">Catgram</string>
     <string name="default_notification_body">Hello!</string>
     <string name="reminder_notification_text">It\'s time to watch some cats!</string>
+    <string name="downloading_completed">Update downloading completed.</string>
+    <string name="button_install">Install</string>
 </resources>

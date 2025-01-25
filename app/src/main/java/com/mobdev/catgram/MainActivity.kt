@@ -14,9 +14,8 @@ import androidx.activity.viewModels
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.mutableStateOf
 import androidx.core.content.ContextCompat
-import androidx.work.ExistingWorkPolicy
-import androidx.work.OneTimeWorkRequestBuilder
-import androidx.work.WorkManager
+import androidx.lifecycle.flowWithLifecycle
+import androidx.lifecycle.lifecycleScope
 import com.google.android.gms.tasks.OnCompleteListener
 import com.google.firebase.auth.ktx.auth
 import com.google.firebase.ktx.Firebase
@@ -28,8 +27,8 @@ import com.mobdev.catgram.ui.CatgramApp
 import com.mobdev.catgram.ui.screens.FavouritesViewModel
 import com.mobdev.catgram.ui.screens.SearchViewModel
 import com.mobdev.catgram.ui.theme.CatgramTheme
-import com.mobdev.catgram.worker.OpenAppReminderWorker
-import java.util.concurrent.TimeUnit
+import com.mobdev.catgram.worker.scheduleOpenAppReminder
+import kotlinx.coroutines.launch
 
 
 class MainActivity : ComponentActivity() {
@@ -45,13 +44,16 @@ class MainActivity : ComponentActivity() {
     }
 
     private val uiState = UiState()
+    private val mainViewModel: MainViewModel by viewModels()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         Log.d(TAG, "${Firebase.auth.currentUser?.uid}")
         uiState.signedIn.value = isSignedIn()
         askNotificationPermission()
-        scheduleOpenAppReminder()
+        scheduleOpenAppReminder(this.applicationContext)
+        checkForUpdates()
+        startReviewFlow()
         //getFCMToken()
         enableEdgeToEdge()
         setContent {
@@ -110,24 +112,32 @@ class MainActivity : ComponentActivity() {
         })
     }
 
-    private fun scheduleOpenAppReminder() {
-        val duration: Long = 3
-        val unit = TimeUnit.DAYS
+    private fun checkForUpdates() {
+        mainViewModel.startCheckForUpdates(this)
 
-        val workBuilder = OneTimeWorkRequestBuilder<OpenAppReminderWorker>()
-            .setInitialDelay(duration, unit)
-            .build()
+        lifecycleScope.launch {
+            mainViewModel.events
+                .flowWithLifecycle(lifecycle)
+                .collect { event ->
+                    when (event) {
+                        Event.UpdateCompleted -> showDialogForCompleteUpdate()
+                    }
+                }
+        }
+    }
 
-        val workManager = WorkManager.getInstance(this.applicationContext)
-        workManager.enqueueUniqueWork(
-            "open_app_reminder",
-            ExistingWorkPolicy.REPLACE,
-            workBuilder
-        )
+    private fun startReviewFlow() {
+        mainViewModel.startReviewFlow(this)
+    }
+
+    private fun showDialogForCompleteUpdate() {
+        Log.d(TAG, "update completed")
+        uiState.needToShowSnackbar.value = true
     }
 
     data class UiState(
         var signedIn: MutableState<Boolean> = mutableStateOf(false),
-        var signInInProgress: MutableState<Boolean> = mutableStateOf(false)
+        var signInInProgress: MutableState<Boolean> = mutableStateOf(false),
+        var needToShowSnackbar: MutableState<Boolean> = mutableStateOf(false)
     )
 }
