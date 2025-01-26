@@ -127,6 +127,16 @@ class MainViewModel : ViewModel() {
         }
     }
 
+    fun askForPostNotificationsPermissionIfNeeded(context: Context, askForPermission: () -> Unit) {
+        viewModelScope.launch {
+            val prefs = context.dataStore.data.first()
+            prefs[firstLaunchTimeKey]?.let { _ ->
+                return@launch
+            }
+            askForPermission()
+        }
+    }
+
     private suspend fun setFirstLaunchedTime(context: Context, newValue: Long) {
         context.dataStore.updateData { prefs ->
             prefs.toMutablePreferences().apply {

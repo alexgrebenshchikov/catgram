@@ -50,7 +50,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         Log.d(TAG, "${Firebase.auth.currentUser?.uid}")
         uiState.signedIn.value = isSignedIn()
-        askNotificationPermission()
+        mainViewModel.askForPostNotificationsPermissionIfNeeded(this, ::askNotificationPermission)
         scheduleOpenAppReminder(this.applicationContext)
         checkForUpdates()
         startReviewFlow()
