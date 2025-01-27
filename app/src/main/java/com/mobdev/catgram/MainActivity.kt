@@ -53,7 +53,6 @@ class MainActivity : ComponentActivity() {
         mainViewModel.askForPostNotificationsPermissionIfNeeded(this, ::askNotificationPermission)
         scheduleOpenAppReminder(this.applicationContext)
         checkForUpdates()
-        startReviewFlow()
         //getFCMToken()
         enableEdgeToEdge()
         setContent {
@@ -124,10 +123,6 @@ class MainActivity : ComponentActivity() {
                     }
                 }
         }
-    }
-
-    private fun startReviewFlow() {
-        mainViewModel.startReviewFlow(this)
     }
 
     private fun showDialogForCompleteUpdate() {

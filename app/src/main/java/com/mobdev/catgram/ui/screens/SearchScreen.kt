@@ -11,7 +11,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -21,22 +20,27 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.mobdev.catgram.MainViewModel
 import com.mobdev.catgram.R
 import com.mobdev.catgram.TAG
 import com.mobdev.catgram.ui.common.CatList
@@ -49,6 +53,7 @@ private const val LOADING_OFFSET = 3
 fun SearchScreen() {
     val searchViewModel: SearchViewModel = viewModel(factory = SearchViewModel.factory)
     val favViewModel: FavouritesViewModel = viewModel()
+    val mainViewModel: MainViewModel = viewModel()
 
     val itemList = searchViewModel.items
     Log.d(TAG, "uiState: ${searchViewModel.uiState}")
@@ -69,37 +74,34 @@ fun SearchScreen() {
         skipPartiallyExpanded = true // Prevent half-expanded state
     )
     var bottomSheetOpened by rememberSaveable { mutableStateOf(false) }
-    val breedsNotLoaded = searchViewModel.choosedBreeds.isEmpty()
+    val breedsLoaded = searchViewModel.choosedBreeds.isNotEmpty()
 
-    Box(
-        modifier = Modifier
-            .fillMaxSize(),
+    val state = rememberPullToRefreshState()
+    val context = LocalContext.current
+
+    PullToRefreshBox(
+        modifier = Modifier.fillMaxSize(),
+        isRefreshing = isLoading && itemList.isEmpty(),
+        onRefresh = {
+            Log.d(TAG, "onRefresh")
+            searchViewModel.refreshData()
+            favViewModel.refreshData()
+        },
+        state = state,
         contentAlignment = Alignment.BottomEnd
     ) {
-        CatList(itemList, isLoading, listState,
+        CatList(itemList, isLoading, isError, listState,
             onFavClick = { shouldAdd, item, onSuccess, onFailure ->
                 if (shouldAdd) {
+                    mainViewModel.startReviewFlow(context)
                     favViewModel.addToFavourites(item, onSuccess, onFailure)
                 } else {
                     favViewModel.removeFromFavourites(item, onSuccess, onFailure)
                 }
             },
             checkIsFavourite = { id -> favViewModel.checkInFavourites(id) },
-            getLikesCount = { id, onSuccess -> favViewModel.getLikesCount(id, onSuccess)} )
-
-        if (isError) {
-            Box(
-                modifier = Modifier.fillMaxSize(),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    text = stringResource(R.string.search_screen_error_message),
-                    style = MaterialTheme.typography.titleMedium,
-                    modifier = Modifier.fillMaxWidth(),
-                    textAlign = TextAlign.Center,
-                )
-            }
-        }
+            getLikesCount = { id, onSuccess -> favViewModel.getLikesCount(id, onSuccess)},
+            onErrorItemClicked = { searchViewModel.loadMoreCatsItemsIfNeeded(false) })
 
         // Trigger loading of more data when we reach the end of the list
         LaunchedEffect(listState) {
@@ -119,10 +121,7 @@ fun SearchScreen() {
 
         FloatingActionButton(
             onClick = {
-                if (breedsNotLoaded) {
-                    searchViewModel.applyBreedsFilter()
-                    favViewModel.refreshData()
-                } else {
+                if (breedsLoaded) {
                     bottomSheetOpened = true
                 }
             },
@@ -130,7 +129,7 @@ fun SearchScreen() {
         ) {
             FloatingActionButtonDefaults.containerColor
             Icon(
-                imageVector = if (breedsNotLoaded) Icons.Default.Refresh else Icons.Default.Search,
+                imageVector = Icons.Default.Search,
                 contentDescription = "Open Bottom Sheet"
             )
         }
@@ -140,7 +139,7 @@ fun SearchScreen() {
                 sheetState = bottomSheetState,
                 onDismissRequest = {
                     bottomSheetOpened = false
-                    searchViewModel.applyBreedsFilter()
+                    searchViewModel.refreshData()
                     favViewModel.refreshData()
                 },
                 modifier = Modifier.padding(top = 8.dp)

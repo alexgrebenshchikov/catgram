@@ -19,10 +19,8 @@ import androidx.lifecycle.viewmodel.viewModelFactory
 import com.mobdev.catgram.CatgramApplication
 import com.mobdev.catgram.TAG
 import com.mobdev.catgram.data.CatgramRepository
-import com.mobdev.catgram.network.BreedInfo
 import com.mobdev.catgram.network.CatsData
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import androidx.datastore.preferences.core.stringPreferencesKey
@@ -105,9 +103,17 @@ class SearchViewModel(
         }
     }
 
-    fun loadMoreCatsItemsIfNeeded() {
+    fun loadMoreCatsItemsIfNeeded(checkErrorState: Boolean = true) {
         Log.d(TAG, "loadMoreCatsItemsIfNeeded page: $currentPage, uiState: $uiState")
-        if (uiState == SearchUiState.Ready && !isAllCatsDataLoaded && choosedBreeds.isNotEmpty()) {
+        if (uiState == SearchUiState.Loading) {
+            return
+        }
+
+        if (checkErrorState && uiState == SearchUiState.Error) {
+            return
+        }
+
+        if (!isAllCatsDataLoaded && choosedBreeds.isNotEmpty()) {
             loadCatsDataPage()
         }
     }
@@ -119,7 +125,7 @@ class SearchViewModel(
         choosedBreeds = choosedBreeds.plus(breed to isChoosed)
     }
 
-    fun applyBreedsFilter() {
+    fun refreshData() {
         resetItems()
         if (choosedBreeds.isEmpty()) {
             loadChoosedBreeds()
@@ -186,7 +192,6 @@ class SearchViewModel(
                     uiState = SearchUiState.Ready
                 }
             } catch (error: Throwable) {
-                //SearchUiState.Failed(error)
                 Log.d(TAG, "load cats data failed: ${error.message}")
                 withContext(Dispatchers.Main) {
                     uiState = SearchUiState.Error
@@ -225,8 +230,8 @@ class SearchViewModel(
     }
 
     sealed interface SearchUiState {
-        data object Ready: SearchUiState
-        data object Loading: SearchUiState
-        data object Error: SearchUiState
+        data object Ready : SearchUiState
+        data object Loading : SearchUiState
+        data object Error : SearchUiState
     }
 }

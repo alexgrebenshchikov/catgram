@@ -30,6 +30,7 @@ fun FavouritesScreen() {
     val favViewModel: FavouritesViewModel = viewModel()
     val itemList = favViewModel.items
     val isLoading = false
+    val isError = false
     val listState = rememberLazyListState(
         initialFirstVisibleItemIndex = favViewModel.scrollPositionIndex,
         initialFirstVisibleItemScrollOffset = favViewModel.scrollPositionOffset
@@ -55,7 +56,7 @@ fun FavouritesScreen() {
         state = state,
         contentAlignment = Alignment.Center
     ) {
-        CatList(itemList, isLoading, listState,
+        CatList(itemList, isLoading, isError, listState,
             onFavClick = { shouldAdd, item, onSuccess, onFailure ->
                 if (shouldAdd) {
                     favViewModel.addToFavourites(item, onSuccess, onFailure)
@@ -64,7 +65,8 @@ fun FavouritesScreen() {
                 }
             },
             checkIsFavourite = { id -> favViewModel.checkInFavourites(id) },
-            getLikesCount = null)
+            getLikesCount = null,
+            onErrorItemClicked = null)
 
         if (itemList.isEmpty()) {
             Text(

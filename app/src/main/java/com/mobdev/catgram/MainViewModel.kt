@@ -102,10 +102,9 @@ class MainViewModel : ViewModel() {
             Log.d(TAG, "start review flow")
             isReviewFlowWasStarted = true
 
-            val launchTime = System.currentTimeMillis()
             viewModelScope.launch {
                 val prefs = context.dataStore.data.first()
-                if (!checkShowReviewDelayMet(prefs, context, launchTime)) {
+                if (checkReviewWasShown(prefs)) {
                     return@launch
                 }
 
@@ -116,6 +115,9 @@ class MainViewModel : ViewModel() {
                         reviewManager.launchReviewFlow(reviewInfo)
                             .addOnSuccessListener {
                                 Log.d(TAG, "review launch success")
+                                viewModelScope.launch {
+                                    setReviewWasShown(context)
+                                }
                             }.addOnFailureListener { throwable ->
                                 Log.e(TAG, "review launch failure", throwable)
                             }
@@ -128,11 +130,12 @@ class MainViewModel : ViewModel() {
     }
 
     fun askForPostNotificationsPermissionIfNeeded(context: Context, askForPermission: () -> Unit) {
+        val launchTime = System.currentTimeMillis()
         viewModelScope.launch {
             val prefs = context.dataStore.data.first()
             prefs[firstLaunchTimeKey]?.let { _ ->
                 return@launch
-            }
+            } ?: setFirstLaunchedTime(context, launchTime)
             askForPermission()
         }
     }
@@ -170,6 +173,13 @@ class MainViewModel : ViewModel() {
         }
 
         return true
+    }
+
+    private fun checkReviewWasShown(prefs: Preferences): Boolean {
+        prefs[reviewWasShown]?.let {
+            return true
+        }
+        return false
     }
 
     companion object {

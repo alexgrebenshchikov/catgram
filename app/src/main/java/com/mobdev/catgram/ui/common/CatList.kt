@@ -2,6 +2,7 @@ package com.mobdev.catgram.ui.common
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -54,15 +55,18 @@ import com.mobdev.catgram.utils.getNameAndDescription
 typealias FavClickCallback = (Boolean, CatsData, () -> Unit, () -> Unit) -> Unit
 typealias CheckIsFavCallback = (String) -> Boolean
 typealias GetLikesCountCallback = ((String, (Long) -> Unit) -> Unit)?
+typealias OnErrorItemClicked = (() -> Unit)?
 
 @Composable
 fun CatList(
     itemList: List<CatsData>,
     isLoading: Boolean,
+    isError: Boolean,
     listState: LazyListState,
     onFavClick: FavClickCallback,
     checkIsFavourite: CheckIsFavCallback,
-    getLikesCount: GetLikesCountCallback
+    getLikesCount: GetLikesCountCallback,
+    onErrorItemClicked: OnErrorItemClicked
 ) {
     LazyColumn(
         state = listState,
@@ -73,7 +77,7 @@ fun CatList(
             CatCard(item, onFavClick, checkIsFavourite, getLikesCount)
         }
 
-        if (isLoading) {
+        if (isLoading && itemList.isNotEmpty()) {
             item {
                 Box(
                     modifier = Modifier
@@ -82,6 +86,28 @@ fun CatList(
                     contentAlignment = Alignment.Center
                 ) {
                     CircularProgressIndicator()
+                }
+            }
+        }
+
+        if(isError) {
+            item {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = stringResource(R.string.search_screen_error_message),
+                        style = MaterialTheme.typography.titleMedium,
+                        modifier = Modifier.fillMaxWidth().clickable {
+                            if (itemList.isNotEmpty()) {
+                                onErrorItemClicked?.invoke()
+                            }
+                        },
+                        textAlign = TextAlign.Center,
+                    )
                 }
             }
         }
