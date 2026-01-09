@@ -101,6 +101,9 @@ dependencies {
     implementation(libs.appupdate)
     implementation(libs.review)
 
+    // ML Kit for cat detection
+    implementation(libs.mlkit.image.labeling)
+
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)

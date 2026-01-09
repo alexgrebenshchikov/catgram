@@ -1,15 +1,12 @@
 package com.mobdev.catgram.worker
 
-import android.app.ActivityManager
 import android.content.Context
-import android.util.Log
 import androidx.work.CoroutineWorker
 import androidx.work.ExistingWorkPolicy
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import com.mobdev.catgram.R
-import com.mobdev.catgram.TAG
 import com.mobdev.catgram.notifications.NotificationParams
 import com.mobdev.catgram.notifications.makeNotification
 import java.util.concurrent.TimeUnit
@@ -21,7 +18,6 @@ class OpenAppReminderWorker(
 ) : CoroutineWorker(context, workerParams) {
 
     override suspend fun doWork(): Result {
-        Log.d(TAG, "do work")
         with(applicationContext) {
             makeNotification(
                 this,

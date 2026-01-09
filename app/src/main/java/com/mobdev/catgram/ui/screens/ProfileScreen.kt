@@ -1,7 +1,6 @@
 package com.mobdev.catgram.ui.screens
 
 import android.net.Uri
-import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -13,10 +12,16 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -35,9 +40,13 @@ import com.mobdev.catgram.ui.theme.CatgramTheme
 
 @Composable
 fun ProfileScreen(
-    avatarUrl: Uri?, userName: String,
-    userEmail: String, onSignOutClick: () -> Unit
+    avatarUrl: Uri?,
+    userName: String,
+    userEmail: String,
+    onSignOutClick: () -> Unit
 ) {
+    var showSignOutDialog by rememberSaveable { mutableStateOf(false) }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -78,12 +87,39 @@ fun ProfileScreen(
         Spacer(modifier = Modifier.height(48.dp))
 
         Button(
-            onClick = onSignOutClick,
+            onClick = { showSignOutDialog = true },
             shape = RoundedCornerShape(32),
             contentPadding = PaddingValues(horizontal = 24.dp, vertical = 12.dp),
             modifier = Modifier.fillMaxWidth(0.5f)
         ) {
             Text(text = stringResource(R.string.sign_out_button_text), color = Color.White)
+        }
+
+        if (showSignOutDialog) {
+            AlertDialog(
+                onDismissRequest = { showSignOutDialog = false },
+                title = {
+                    Text(text = stringResource(R.string.sign_out_dialog_title))
+                },
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            showSignOutDialog = false
+                            onSignOutClick.invoke()
+                        }
+                    ) {
+                        Text(
+                            text = stringResource(R.string.sign_out_dialog_confirm),
+                            color = Color.Red
+                        )
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showSignOutDialog = false }) {
+                        Text(text = stringResource(R.string.sign_out_dialog_cancel))
+                    }
+                }
+            )
         }
     }
 }

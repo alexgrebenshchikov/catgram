@@ -6,12 +6,11 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.os.Build
-import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import com.mobdev.catgram.MainActivity
 import com.mobdev.catgram.R
-import com.mobdev.catgram.TAG
+import com.mobdev.catgram.logging.logger
 
 fun makeNotification(
     context: Context,
@@ -49,10 +48,10 @@ fun makeNotification(
             .setAutoCancel(true)
 
         try {
-            Log.d(TAG, "Notification create")
+            logger.d( "Notification create")
             NotificationManagerCompat.from(context).notify(notificationId, builder.build())
         } catch (e: SecurityException) {
-            Log.e(TAG, "Notifications permission not granted", e)
+            logger.e( "Notifications permission not granted: ${e.message}")
         }
     }
 }

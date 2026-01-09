@@ -11,7 +11,7 @@ interface CatgramApiService {
         @Query("page") page: Int,
         @Query("order") order: String,
         @Query("api_key") apiKey: String
-    ): List<CatsData>
+    ): List<CatsData.CatsApiData>
 
     @GET("breeds")
     suspend fun getBreedList(): List<BreedInfo>

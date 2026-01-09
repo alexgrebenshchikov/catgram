@@ -6,6 +6,7 @@ credentials = "1.5.0-beta01"
 datastorePreferences = "1.0.0"
 firebaseBom = "33.6.0"
 guava = "31.1-android"
+mlkitImageLabeling = "17.0.9"
 kotlin = "2.0.0"
 coreKtx = "1.15.0"
 junit = "4.13.2"
@@ -66,6 +67,7 @@ firebase-messaging-ktx = { group = "com.google.firebase", name = "firebase-messa
 androidx-work-runtime-ktx = { group = "androidx.work", name = "work-runtime-ktx", version.ref = "workRuntimeKtx" }
 androidx-work-testing = { group = "androidx.work", name = "work-testing", version.ref = "workTesting" }
 material = { group = "com.google.android.material", name = "material", version.ref = "material" }
+mlkit-image-labeling = { module = "com.google.mlkit:image-labeling", version.ref = "mlkitImageLabeling" }
 review = { module = "ru.rustore.sdk:review", version.ref = "review" }
 
 [plugins]

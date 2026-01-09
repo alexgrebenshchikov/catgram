@@ -1,23 +1,34 @@
 package com.mobdev.catgram.ui
 
 import android.content.Intent
-import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.result.ActivityResultLauncher
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Feed
 import androidx.compose.material.icons.filled.Person
-import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Star
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.NavigationBarItemDefaults
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.Saver
 import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.ui.Alignment
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.google.android.gms.auth.api.signin.GoogleSignIn
@@ -26,29 +37,28 @@ import com.google.firebase.ktx.Firebase
 import com.mobdev.catgram.MainActivity
 import com.mobdev.catgram.MainViewModel
 import com.mobdev.catgram.R
-import com.mobdev.catgram.TAG
 import com.mobdev.catgram.auth.signInViaGoogle
 import com.mobdev.catgram.auth.signOut
-import com.mobdev.catgram.ui.BottomNavScreen.Companion.FAVOURITES_SCREEN_LABEL
-import com.mobdev.catgram.ui.BottomNavScreen.Companion.PROFILE_SCREEN_LABEL
-import com.mobdev.catgram.ui.BottomNavScreen.Companion.SEARCH_SCREEN_LABEL
+import com.mobdev.catgram.logging.logger
+import com.mobdev.catgram.ui.BottomNavScreen.Companion.FAVOURITES_SCREEN_ID
+import com.mobdev.catgram.ui.BottomNavScreen.Companion.FEED_SCREEN_ID
+import com.mobdev.catgram.ui.BottomNavScreen.Companion.PROFILE_SCREEN_ID
 import com.mobdev.catgram.ui.screens.FavouritesScreen
 import com.mobdev.catgram.ui.screens.FavouritesViewModel
+import com.mobdev.catgram.ui.screens.FeedScreen
+import com.mobdev.catgram.ui.screens.FeedViewModel
 import com.mobdev.catgram.ui.screens.ProfileScreen
-import com.mobdev.catgram.ui.screens.SearchScreen
-import com.mobdev.catgram.ui.screens.SearchViewModel
 import com.mobdev.catgram.ui.screens.StartScreen
-import kotlinx.coroutines.launch
 
-sealed class BottomNavScreen(val route: String, val label: String) {
-    data object Search : BottomNavScreen("search", SEARCH_SCREEN_LABEL)
-    data object Favourites : BottomNavScreen("favourites", FAVOURITES_SCREEN_LABEL)
-    data object Profile : BottomNavScreen("profile", PROFILE_SCREEN_LABEL)
+sealed class BottomNavScreen(val id: String, val labelResId: Int) {
+    data object Feed : BottomNavScreen(FEED_SCREEN_ID, R.string.feed_screen_label)
+    data object Favourites : BottomNavScreen( FAVOURITES_SCREEN_ID, R.string.favourites_screen_label)
+    data object Profile : BottomNavScreen( PROFILE_SCREEN_ID, R.string.profile_screen_label)
 
     companion object {
-        const val SEARCH_SCREEN_LABEL = "Search"
-        const val FAVOURITES_SCREEN_LABEL = "Favourites"
-        const val PROFILE_SCREEN_LABEL = "Profile"
+        const val FEED_SCREEN_ID = "Feed"
+        const val FAVOURITES_SCREEN_ID = "Favourites"
+        const val PROFILE_SCREEN_ID = "Profile"
     }
 }
 
@@ -59,34 +69,33 @@ fun CatgramApp(
     uiState: MainActivity.UiState
 ) {
     val screens = listOf(
-        BottomNavScreen.Search,
+        BottomNavScreen.Feed,
         BottomNavScreen.Favourites,
         BottomNavScreen.Profile,
     )
 
     val customSaver = Saver<BottomNavScreen, String>(
         save = {
-            it.label
+            it.id
         },
         restore = { when(it) {
-            SEARCH_SCREEN_LABEL -> BottomNavScreen.Search
-            FAVOURITES_SCREEN_LABEL -> BottomNavScreen.Favourites
-            PROFILE_SCREEN_LABEL -> BottomNavScreen.Profile
+            FEED_SCREEN_ID -> BottomNavScreen.Feed
+            FAVOURITES_SCREEN_ID -> BottomNavScreen.Favourites
+            PROFILE_SCREEN_ID -> BottomNavScreen.Profile
             else -> throw IllegalStateException("Should not reach.")
         } }
     )
 
     var selectedScreen by rememberSaveable(
         stateSaver = customSaver
-    ) { mutableStateOf(BottomNavScreen.Search) }
+    ) { mutableStateOf(BottomNavScreen.Feed) }
     val signedIn = uiState.signedIn.value
 
-    val favViewModel: FavouritesViewModel = viewModel()
-    val searchViewModel: SearchViewModel = viewModel(factory = SearchViewModel.factory)
+    val favViewModel: FavouritesViewModel = viewModel(factory = FavouritesViewModel.factory)
+    val feedViewModel: FeedViewModel = viewModel(factory = FeedViewModel.factory)
     val mainViewModel: MainViewModel = viewModel()
 
     val snackBarHostState = remember { SnackbarHostState() }
-    val scope = rememberCoroutineScope()
 
     Scaffold(
         snackbarHost = { SnackbarHost(hostState = snackBarHostState) },
@@ -113,7 +122,7 @@ fun CatgramApp(
             }
 
             when (selectedScreen) {
-                is BottomNavScreen.Search -> SearchScreen()
+                is BottomNavScreen.Feed -> FeedScreen()
                 is BottomNavScreen.Favourites -> FavouritesScreen()
                 is BottomNavScreen.Profile -> {
                     val avatarUrl = GoogleSignIn.getLastSignedInAccount(activity)?.photoUrl
@@ -126,11 +135,11 @@ fun CatgramApp(
                             R.string.unknown_email
                         )
                     ) {
-                        searchViewModel.reset()
+                        feedViewModel.reset()
                         favViewModel.reset()
                         signOut()
                         uiState.signedIn.value = false
-                        selectedScreen = BottomNavScreen.Search
+                        selectedScreen = BottomNavScreen.Feed
                     }
                 }
             }
@@ -148,10 +157,10 @@ fun CatgramApp(
                 ).let { snackbarResult ->
                     when(snackbarResult) {
                         SnackbarResult.Dismissed -> {
-                            Log.d(TAG, "install dismissed")
+                            logger.d( "install dismissed")
                         }
                         SnackbarResult.ActionPerformed -> {
-                            Log.d(TAG, "install acquired")
+                            logger.d( "install acquired")
                             mainViewModel.completeUpdateRequested()
                         }
                     }
@@ -177,7 +186,7 @@ fun BottomNavigationBar(
                 selected = selectedScreen == screen,
                 onClick = { onItemSelected(screen) },
                 label = {
-                    Text(screen.label)
+                    Text(stringResource(screen.labelResId))
                 },
                 icon = {
                     when(screen) {
@@ -187,8 +196,8 @@ fun BottomNavigationBar(
                         BottomNavScreen.Profile -> {
                             Icon(imageVector = Icons.Default.Person, contentDescription = null)
                         }
-                        BottomNavScreen.Search -> {
-                            Icon(imageVector = Icons.Default.Search, contentDescription = null)
+                        BottomNavScreen.Feed -> {
+                            Icon(imageVector = Icons.Default.Feed, contentDescription = null)
                         }
                     }
                 },

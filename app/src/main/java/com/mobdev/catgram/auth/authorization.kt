@@ -2,7 +2,6 @@ package com.mobdev.catgram.auth
 
 import android.app.Activity.RESULT_OK
 import android.content.Intent
-import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.result.ActivityResult
 import androidx.activity.result.ActivityResultLauncher
@@ -14,9 +13,12 @@ import com.google.firebase.auth.GoogleAuthProvider
 import com.google.firebase.auth.ktx.auth
 import com.google.firebase.ktx.Firebase
 import com.mobdev.catgram.R
-import com.mobdev.catgram.TAG
+import com.mobdev.catgram.logging.logger
 
 fun getCurrentUser() = Firebase.auth.currentUser
+
+fun getCurrentUserOrThrow() =
+    Firebase.auth.currentUser ?: throw IllegalStateException("User unauthorized")
 
 fun isSignedIn() = getCurrentUser() != null
 
@@ -43,7 +45,7 @@ fun createSignInLauncher(
     return activity.registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
     ) { result: ActivityResult ->
-        Log.d(TAG, "act result: ${result.resultCode} ${result.data}")
+        logger.d("act result: ${result.resultCode} ${result.data}")
         if (result.resultCode == RESULT_OK && result.data != null) {
             val task = GoogleSignIn.getSignedInAccountFromIntent(result.data)
             try {
@@ -59,14 +61,10 @@ fun createSignInLauncher(
                             .addOnCompleteListener(activity) { firebaseTask ->
                                 if (firebaseTask.isSuccessful) {
                                     val user = auth.currentUser
-                                    Log.d(TAG, "signInWithCredential:success $user")
+                                    logger.d("signInWithCredential:success $user")
                                     resultCallback(SignInResult.Succeed)
                                 } else {
-                                    Log.w(
-                                        TAG,
-                                        "signInWithCredential:failure",
-                                        firebaseTask.exception
-                                    )
+                                    logger.e("signInWithCredential:failure ${firebaseTask.exception?.message}")
                                     resultCallback(
                                         SignInResult.Failed(
                                             firebaseTask.exception
@@ -78,7 +76,7 @@ fun createSignInLauncher(
                     }
 
                     else -> {
-                        Log.d(TAG, "No ID token!")
+                        logger.d("No ID token!")
                         resultCallback(SignInResult.Failed(Throwable("No ID token!")))
                     }
                 }

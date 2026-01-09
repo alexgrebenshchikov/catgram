@@ -2,7 +2,6 @@ package com.mobdev.catgram
 
 import android.app.Activity
 import android.content.Context
-import android.util.Log
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
@@ -10,6 +9,7 @@ import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.mobdev.catgram.logging.logger
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
@@ -47,7 +47,7 @@ class MainViewModel : ViewModel() {
             }
 
             InstallStatus.FAILED -> {
-                Log.e(TAG, "Downloading error")
+                logger.e( "Downloading error")
             }
         }
     }
@@ -62,33 +62,33 @@ class MainViewModel : ViewModel() {
 
     fun startCheckForUpdates(context: Context) {
         if (!isUpdatesCheckWasLaunched) {
-            Log.d(TAG, "startCheckForUpdates")
+            logger.d( "startCheckForUpdates")
             isUpdatesCheckWasLaunched = true
 
             ruStoreAppUpdateManager = RuStoreAppUpdateManagerFactory.create(context)
             ruStoreAppUpdateManager
                 .getAppUpdateInfo()
                 .addOnSuccessListener { appUpdateInfo ->
-                    Log.d(TAG, "getAppUpdateInfo success")
+                    logger.d( "getAppUpdateInfo success")
                     if (appUpdateInfo.updateAvailability == UpdateAvailability.UPDATE_AVAILABLE) {
-                        Log.d(TAG, "update available ${appUpdateInfo.availableVersionCode}")
+                        logger.d( "update available ${appUpdateInfo.availableVersionCode}")
                         ruStoreAppUpdateManager.registerListener(installStateUpdateListener)
                         ruStoreAppUpdateManager
                             .startUpdateFlow(appUpdateInfo, AppUpdateOptions.Builder().build())
                             .addOnSuccessListener { resultCode ->
                                 if (resultCode == Activity.RESULT_CANCELED) {
                                     // Пользователь отказался от скачивания
-                                    Log.d(TAG, "startUpdateFlow user cancelled update")
+                                    logger.d( "startUpdateFlow user cancelled update")
                                 }
-                                Log.d(TAG, "startUpdateFlow success")
+                                logger.d( "startUpdateFlow success")
                             }
                             .addOnFailureListener { throwable ->
-                                Log.e(TAG, "startUpdateFlow error", throwable)
+                                logger.e( "startUpdateFlow error: ${throwable.message}")
                             }
                     }
                 }
                 .addOnFailureListener { throwable ->
-                    Log.e(TAG, "getAppUpdateInfo error", throwable)
+                    logger.e( "getAppUpdateInfo error: ${throwable.message}")
                 }
         }
     }
@@ -99,7 +99,7 @@ class MainViewModel : ViewModel() {
 
     fun startReviewFlow(context: Context) {
         if (!isReviewFlowWasStarted) {
-            Log.d(TAG, "start review flow")
+            logger.d( "start review flow")
             isReviewFlowWasStarted = true
 
             viewModelScope.launch {
@@ -111,19 +111,19 @@ class MainViewModel : ViewModel() {
                 val reviewManager = RuStoreReviewManagerFactory.create(context)
                 reviewManager.requestReviewFlow()
                     .addOnSuccessListener { reviewInfo ->
-                        Log.d(TAG, "request review success")
+                        logger.d( "request review success")
                         reviewManager.launchReviewFlow(reviewInfo)
                             .addOnSuccessListener {
-                                Log.d(TAG, "review launch success")
+                                logger.d( "review launch success")
                                 viewModelScope.launch {
                                     setReviewWasShown(context)
                                 }
                             }.addOnFailureListener { throwable ->
-                                Log.e(TAG, "review launch failure", throwable)
+                                logger.e( "review launch failure: ${throwable.message}")
                             }
                     }
                     .addOnFailureListener { throwable ->
-                        Log.e(TAG, "request review failure", throwable)
+                        logger.e( "request review failure: ${throwable.message}")
                     }
             }
         }
@@ -132,11 +132,18 @@ class MainViewModel : ViewModel() {
     fun askForPostNotificationsPermissionIfNeeded(context: Context, askForPermission: () -> Unit) {
         val launchTime = System.currentTimeMillis()
         viewModelScope.launch {
-            val prefs = context.dataStore.data.first()
-            prefs[firstLaunchTimeKey]?.let { _ ->
-                return@launch
-            } ?: setFirstLaunchedTime(context, launchTime)
-            askForPermission()
+            try {
+                val prefs = context.dataStore.data.first()
+                val firstLaunch = prefs[firstLaunchTimeKey]
+                if (firstLaunch != null) {
+                    return@launch
+                }
+
+                setFirstLaunchedTime(context, launchTime)
+                askForPermission()
+            } catch (e: Throwable) {
+                logger.e("Something went wrong: ${e.message}")
+            }
         }
     }
 

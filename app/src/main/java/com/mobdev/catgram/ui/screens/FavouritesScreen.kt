@@ -1,6 +1,5 @@
 package com.mobdev.catgram.ui.screens
 
-import android.util.Log
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -20,17 +19,17 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.mobdev.catgram.R
-import com.mobdev.catgram.TAG
 import com.mobdev.catgram.ui.common.CatList
 
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun FavouritesScreen() {
-    val favViewModel: FavouritesViewModel = viewModel()
-    val itemList = favViewModel.items
+    val favViewModel: FavouritesViewModel = viewModel(factory = FavouritesViewModel.factory)
+    val itemList = favViewModel.items ?: listOf()
     val isLoading = false
     val isError = false
+    val isFavouritesReady = favViewModel.items != null
     val listState = rememberLazyListState(
         initialFirstVisibleItemIndex = favViewModel.scrollPositionIndex,
         initialFirstVisibleItemScrollOffset = favViewModel.scrollPositionOffset
@@ -47,7 +46,6 @@ fun FavouritesScreen() {
     PullToRefreshBox(
         isRefreshing = isRefreshing,
         onRefresh = {
-            Log.d(TAG, "onRefresh")
             isRefreshing = true
             favViewModel.fetchFavourites {
                 isRefreshing = false
@@ -56,17 +54,21 @@ fun FavouritesScreen() {
         state = state,
         contentAlignment = Alignment.Center
     ) {
-        CatList(itemList, isLoading, isError, listState,
-            onFavClick = { shouldAdd, item, onSuccess, onFailure ->
+        CatList(
+            itemList, isLoading, isError, listState,
+            onFavClick = { shouldAdd, item, onFinish ->
                 if (shouldAdd) {
-                    favViewModel.addToFavourites(item, onSuccess, onFailure)
+                    favViewModel.addToFavourites(item, onFinish)
                 } else {
-                    favViewModel.removeFromFavourites(item, onSuccess, onFailure)
+                    favViewModel.removeFromFavourites(item, onFinish)
                 }
             },
             checkIsFavourite = { id -> favViewModel.checkInFavourites(id) },
             getLikesCount = null,
-            onErrorItemClicked = null)
+            onErrorItemClicked = null,
+            onPostDeleteClick = null,
+            isFavouritesReady = isFavouritesReady,
+        )
 
         if (itemList.isEmpty()) {
             Text(

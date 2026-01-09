@@ -23,9 +23,10 @@ import com.google.firebase.messaging.FirebaseMessaging
 import com.mobdev.catgram.auth.SignInResult
 import com.mobdev.catgram.auth.createSignInLauncher
 import com.mobdev.catgram.auth.isSignedIn
+import com.mobdev.catgram.logging.logger
 import com.mobdev.catgram.ui.CatgramApp
 import com.mobdev.catgram.ui.screens.FavouritesViewModel
-import com.mobdev.catgram.ui.screens.SearchViewModel
+import com.mobdev.catgram.ui.screens.FeedViewModel
 import com.mobdev.catgram.ui.theme.CatgramTheme
 import com.mobdev.catgram.worker.scheduleOpenAppReminder
 import kotlinx.coroutines.launch
@@ -37,9 +38,17 @@ class MainActivity : ComponentActivity() {
         ActivityResultContracts.RequestPermission(),
     ) { isGranted: Boolean ->
         if (isGranted) {
-            Toast.makeText(this, "Notifications permission granted", Toast.LENGTH_SHORT).show()
+            Toast.makeText(
+                this,
+                resources.getString(R.string.notification_granted_toast),
+                Toast.LENGTH_SHORT
+            ).show()
         } else {
-            Toast.makeText(this, "Notifications permission not granted", Toast.LENGTH_SHORT).show()
+            Toast.makeText(
+                this,
+                resources.getString(R.string.notification_not_granted_toast),
+                Toast.LENGTH_SHORT
+            ).show()
         }
     }
 
@@ -48,12 +57,11 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        Log.d(TAG, "${Firebase.auth.currentUser?.uid}")
+        logger.d("${Firebase.auth.currentUser?.uid}")
         uiState.signedIn.value = isSignedIn()
         mainViewModel.askForPostNotificationsPermissionIfNeeded(this, ::askNotificationPermission)
         scheduleOpenAppReminder(this.applicationContext)
         checkForUpdates()
-        //getFCMToken()
         enableEdgeToEdge()
         setContent {
             CatgramTheme {
@@ -66,9 +74,9 @@ class MainActivity : ComponentActivity() {
         when (result) {
             SignInResult.Succeed -> {
                 uiState.signedIn.value = true
-                val searchViewModel: SearchViewModel by viewModels { SearchViewModel.factory }
-                searchViewModel.loadChoosedBreeds()
-                val favViewModel: FavouritesViewModel by viewModels()
+                val feedViewModel: FeedViewModel by viewModels { FeedViewModel.factory }
+                feedViewModel.loadFilterState()
+                val favViewModel: FavouritesViewModel by viewModels { FavouritesViewModel.factory }
                 favViewModel.initialize()
             }
 
@@ -97,7 +105,6 @@ class MainActivity : ComponentActivity() {
     private fun getFCMToken() {
         FirebaseMessaging.getInstance().token.addOnCompleteListener(OnCompleteListener { task ->
             if (!task.isSuccessful) {
-                Log.w(TAG, "Fetching FCM registration token failed", task.exception)
                 return@OnCompleteListener
             }
 
@@ -106,7 +113,6 @@ class MainActivity : ComponentActivity() {
 
             // Log and toast
             val msg = "FCM token: $token"
-            Log.d(TAG, msg)
             Toast.makeText(baseContext, msg, Toast.LENGTH_SHORT).show()
         })
     }
@@ -126,7 +132,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun showDialogForCompleteUpdate() {
-        Log.d(TAG, "update completed")
+        logger.d("update completed")
         uiState.needToShowSnackbar.value = true
     }
 
