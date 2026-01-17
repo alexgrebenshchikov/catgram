@@ -42,5 +42,6 @@
     <string name="notification_granted_toast">Notifications permission granted</string>
     <string name="notification_not_granted_toast">Notifications permission not granted</string>
     <string name="snackbar_load_data_failed">Failed to load data</string>
+    <string name="snackbar_check_date_time">Connection failed. Please check your device date and time settings.</string>
     <string name="sign_in_with_google_account">Sign in with Google Account</string>
 </resources>

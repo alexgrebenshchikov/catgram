@@ -19,3 +19,34 @@
 # If you keep the line number information, uncomment this to
 # hide the original source file name.
 #-renamesourcefileattribute SourceFile
+
+# Keep generic signature for Retrofit/Gson
+-keepattributes Signature
+-keepattributes *Annotation*
+
+# Gson - keep data classes used with Retrofit
+-keep class com.mobdev.catgram.network.BreedInfo { *; }
+-keep class com.mobdev.catgram.network.CatsData$* { *; }
+-keep class com.mobdev.catgram.network.ImageUploadResponse { *; }
+-keep class com.mobdev.catgram.network.ImageUploadData { *; }
+
+ # With R8 full mode generic signatures are stripped for classes that are not
+ # kept. Suspend functions are wrapped in continuations where the type argument
+ # is used.
+ -keep,allowobfuscation,allowshrinking class kotlin.coroutines.Continuation
+
+ # R8 full mode strips generic signatures from return types if not kept.
+ -if interface * { @retrofit2.http.* public *** *(...); }
+ -keep,allowoptimization,allowshrinking,allowobfuscation class <3>
+
+ # With R8 full mode generic signatures are stripped for classes that are not kept.
+ -keep,allowobfuscation,allowshrinking class retrofit2.Response
+
+# Firebase Firestore - keep data classes (prevent obfuscation of class/field names)
+-keep class com.mobdev.catgram.data.FirebaseUserPost { *; }
+-keep class com.mobdev.catgram.data.FirebaseFavourites { *; }
+-keep class com.mobdev.catgram.data.FirebaseFavouriteId { *; }
+-keep class com.mobdev.catgram.data.FirebaseFavouriteCatsApi { *; }
+-keep class com.mobdev.catgram.data.FirebaseBreedInfo { *; }
+-keep class com.mobdev.catgram.data.FirebaseLikesCounter { *; }
+-keep class com.mobdev.catgram.data.FavouriteItemType { *; }

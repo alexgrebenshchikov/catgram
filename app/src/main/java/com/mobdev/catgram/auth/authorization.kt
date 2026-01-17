@@ -64,7 +64,8 @@ fun createSignInLauncher(
                                     logger.d("signInWithCredential:success $user")
                                     resultCallback(SignInResult.Succeed)
                                 } else {
-                                    logger.e("signInWithCredential:failure ${firebaseTask.exception?.message}")
+                                    logger.e("signInWithCredential:failure ${firebaseTask.exception?.message}",
+                                        Throwable())
                                     resultCallback(
                                         SignInResult.Failed(
                                             firebaseTask.exception

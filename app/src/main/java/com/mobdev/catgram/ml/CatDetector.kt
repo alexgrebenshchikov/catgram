@@ -42,11 +42,11 @@ class CatDetector {
                         continuation.resume(Result.success(isCat))
                     }
                     .addOnFailureListener { e ->
-                        logger.e( "Image labeling failed: ${e.message}")
+                        logger.e( "Image labeling failed: ${e.message}", e)
                         continuation.resume(Result.failure(e))
                     }
             } catch (e: Exception) {
-                logger.e( "Cat detection error: ${e.message}")
+                logger.e( "Cat detection error: ${e.message}", e)
                 continuation.resume(Result.failure(e))
             }
         }
@@ -64,7 +64,7 @@ class CatDetector {
                 MediaStore.Images.Media.getBitmap(context.contentResolver, uri)
             }
         } catch (e: Exception) {
-            logger.e( "Failed to decode bitmap: ${e.message}")
+            logger.e( "Failed to decode bitmap: ${e.message}", e)
             null
         }
     }

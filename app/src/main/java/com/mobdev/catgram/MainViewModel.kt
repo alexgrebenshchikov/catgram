@@ -47,7 +47,7 @@ class MainViewModel : ViewModel() {
             }
 
             InstallStatus.FAILED -> {
-                logger.e( "Downloading error")
+                logger.e( "Downloading error", Throwable())
             }
         }
     }
@@ -83,12 +83,12 @@ class MainViewModel : ViewModel() {
                                 logger.d( "startUpdateFlow success")
                             }
                             .addOnFailureListener { throwable ->
-                                logger.e( "startUpdateFlow error: ${throwable.message}")
+                                logger.e( "startUpdateFlow error: ${throwable.message}", throwable)
                             }
                     }
                 }
                 .addOnFailureListener { throwable ->
-                    logger.e( "getAppUpdateInfo error: ${throwable.message}")
+                    logger.e( "getAppUpdateInfo error: ${throwable.message}", throwable)
                 }
         }
     }
@@ -119,11 +119,11 @@ class MainViewModel : ViewModel() {
                                     setReviewWasShown(context)
                                 }
                             }.addOnFailureListener { throwable ->
-                                logger.e( "review launch failure: ${throwable.message}")
+                                logger.e( "review launch failure: ${throwable.message}", throwable)
                             }
                     }
                     .addOnFailureListener { throwable ->
-                        logger.e( "request review failure: ${throwable.message}")
+                        logger.e( "request review failure: ${throwable.message}", throwable)
                     }
             }
         }
@@ -142,7 +142,7 @@ class MainViewModel : ViewModel() {
                 setFirstLaunchedTime(context, launchTime)
                 askForPermission()
             } catch (e: Throwable) {
-                logger.e("Something went wrong: ${e.message}")
+                logger.e("Something went wrong: ${e.message}", e)
             }
         }
     }

@@ -56,7 +56,7 @@ class FavouritesViewModel(
             } catch (e: Throwable) {
                 items = curItems
                 likes = curLikes
-                logger.e( "addToFavourites Transaction failed: ${e.message}")
+                logger.e( "addToFavourites Transaction failed: ${e.message}", e)
                 onFinish()
             }
         }
@@ -80,7 +80,7 @@ class FavouritesViewModel(
             } catch (e: Throwable) {
                 items = curItems
                 likes = curLikes
-                logger.e( "removeFromFavourites Transaction failed: ${e.message}")
+                logger.e( "removeFromFavourites Transaction failed: ${e.message}", e)
                 onFinish()
             }
         }
@@ -97,7 +97,7 @@ class FavouritesViewModel(
                 }
             } catch (e: Throwable) {
                 onComplete()
-                logger.e( "fetchFavourites error: ${e.message}")
+                logger.e( "fetchFavourites error: ${e.message}", e)
             }
         }
     }
@@ -118,7 +118,7 @@ class FavouritesViewModel(
                     logger.d( "getLikesCount succeeded $likes")
                 }
             } catch (e: Throwable) {
-                logger.e( "getLikesCount failed ${e.message}")
+                logger.e( "getLikesCount failed ${e.message}", e)
             }
         }
         return null

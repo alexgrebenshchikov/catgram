@@ -35,6 +35,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.encodeToJsonElement
+import javax.net.ssl.SSLHandshakeException
 
 class FeedViewModel(
     private val catgramApiRepository: CatgramApiRepository,
@@ -130,8 +131,11 @@ class FeedViewModel(
                     }
                 }
             } catch (e: Throwable) {
-                logger.e( "load choosed breeds failed: ${e.message}")
+                logger.e( "load choosed breeds failed: ${e.message}", e)
                 uiState = FeedUiState.Error
+                if (e is SSLHandshakeException) {
+                    snackbarMessage = context.getString(R.string.snackbar_check_date_time)
+                }
             }
         }
     }
@@ -204,7 +208,7 @@ class FeedViewModel(
                 }
                 snackbarMessage = context.getString(R.string.snackbar_post_created)
             } catch (e: Throwable) {
-                logger.e( "post create failed: ${e.message}")
+                logger.e( "post create failed: ${e.message}", e)
                 snackbarMessage = context.getString(R.string.snackbar_post_create_failed)
             } finally {
                 isCreatingPost = false
@@ -225,7 +229,7 @@ class FeedViewModel(
                 }
             } catch (e: Throwable) {
                 snackbarMessage = context.getString(R.string.snackbar_post_delete_failed)
-                logger.e( "Failed to delete post ${e.message}")
+                logger.e( "Failed to delete post ${e.message}", e)
             }
         }
     }
@@ -299,7 +303,7 @@ class FeedViewModel(
                     }
                 }
             } catch (error: Throwable) {
-                logger.e( "load cats data failed: ${error.message}")
+                logger.e( "load cats data failed: ${error.message}", error)
                 uiState = FeedUiState.Error
                 snackbarMessage = context.getString(R.string.snackbar_load_data_failed)
             }

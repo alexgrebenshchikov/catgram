@@ -51,7 +51,7 @@ fun makeNotification(
             logger.d( "Notification create")
             NotificationManagerCompat.from(context).notify(notificationId, builder.build())
         } catch (e: SecurityException) {
-            logger.e( "Notifications permission not granted: ${e.message}")
+            logger.e( "Notifications permission not granted: ${e.message}", e)
         }
     }
 }
