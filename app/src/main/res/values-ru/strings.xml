@@ -7,7 +7,7 @@
     <string name="sign_out_button_text">Выйти</string>
     <string name="unknown_user_name">Неизвестный пользователь</string>
     <string name="unknown_email">Неизвестный email</string>
-    <string name="favourites_screen_placeholder">У вас пока нет избранного.</string>
+    <string name="favourites_screen_placeholder">У вас пока нет избранного или не удалось загрузить данные.</string>
     <string name="search_screen_error_message">Не удалось загрузить данные. Проверьте подключение к сети и попробуйте снова</string>
     <string name="default_notification_title">Catgram</string>
     <string name="default_notification_body">Привет!</string>
@@ -40,4 +40,6 @@
     <string name="sign_out_dialog_cancel">Отмена</string>
     <string name="notification_granted_toast">Разрешение на отправку уведомлений получено</string>
     <string name="notification_not_granted_toast">Разрешение на отправку уведомлений не получено</string>
+    <string name="snackbar_load_data_failed">Не удалось загрузить данные</string>
+    <string name="sign_in_with_google_account">Войти с помощью Google аккаунта</string>
 </resources>

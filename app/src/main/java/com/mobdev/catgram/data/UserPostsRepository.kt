@@ -68,7 +68,13 @@ class FirebaseUserPostsRepository() : UserPostsRepository {
     ): List<CatsUserPostData> {
         val currentUser = getCurrentUserOrThrow()
         val snapshot = userPostsColRef
-            .apply { if (showOnlyMyPosts) whereIn(USER_ID, listOf(currentUser.uid)) }
+            .let {
+                if (showOnlyMyPosts) {
+                    it.whereIn(USER_ID, listOf(currentUser.uid))
+                } else {
+                    it
+                }
+            }
             .orderBy(CREATED_AT, Query.Direction.DESCENDING)
             .limit(pageSize)
             .get()
@@ -85,7 +91,13 @@ class FirebaseUserPostsRepository() : UserPostsRepository {
     ): List<CatsUserPostData> {
         val currentUser = getCurrentUserOrThrow()
         val snapshot = userPostsColRef
-            .apply { if (showOnlyMyPosts) whereIn(USER_ID, listOf(currentUser.uid)) }
+            .let {
+                if (showOnlyMyPosts) {
+                    it.whereIn(USER_ID, listOf(currentUser.uid))
+                } else {
+                    it
+                }
+            }
             .orderBy(CREATED_AT, Query.Direction.DESCENDING)
             .startAfter(last)
             .limit(pageSize)

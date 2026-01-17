@@ -83,7 +83,7 @@ fun StartScreen(
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Text(
-                    text = "Sign in with Google Account",
+                    text = stringResource(R.string.sign_in_with_google_account),
                     style = MaterialTheme.typography.bodyMedium,
                     color = Color.White,
                     modifier = Modifier.weight(1f)

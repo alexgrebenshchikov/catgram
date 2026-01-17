@@ -73,6 +73,9 @@ class FeedViewModel(
     var shouldScrollToTop: Boolean by mutableStateOf(false)
         private set
 
+    var isCreatingPost: Boolean by mutableStateOf(false)
+        private set
+
     fun onScrolledToTop() {
         shouldScrollToTop = false
     }
@@ -183,6 +186,7 @@ class FeedViewModel(
 
     fun createUserPost(imageUri: Uri, postText: String) {
         viewModelScope.launch(Dispatchers.IO) {
+            isCreatingPost = true
             try {
                 val catDetectionResult = catDetector.isCatImage(context, imageUri)
                 val isCat = catDetectionResult.getOrThrow()
@@ -202,6 +206,8 @@ class FeedViewModel(
             } catch (e: Throwable) {
                 logger.e( "post create failed: ${e.message}")
                 snackbarMessage = context.getString(R.string.snackbar_post_create_failed)
+            } finally {
+                isCreatingPost = false
             }
         }
     }
@@ -295,6 +301,7 @@ class FeedViewModel(
             } catch (error: Throwable) {
                 logger.e( "load cats data failed: ${error.message}")
                 uiState = FeedUiState.Error
+                snackbarMessage = context.getString(R.string.snackbar_load_data_failed)
             }
         }
     }

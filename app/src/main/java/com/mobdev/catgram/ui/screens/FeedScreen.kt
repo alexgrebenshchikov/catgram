@@ -17,9 +17,12 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
@@ -28,6 +31,7 @@ import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -119,6 +123,7 @@ fun FeedScreen() {
 
     val snackbarHostState = remember { SnackbarHostState() }
     val errorMessage = feedViewModel.snackbarMessage
+    val isCreatingPost = feedViewModel.isCreatingPost
 
     LaunchedEffect(errorMessage) {
         errorMessage?.let {
@@ -199,15 +204,24 @@ fun FeedScreen() {
             // Primary action - Create Post
             FloatingActionButton(
                 onClick = {
-                    selectedImageUri = null
-                    postText = ""
-                    createPostSheetOpened = true
+                    if (!isCreatingPost) {
+                        selectedImageUri = null
+                        postText = ""
+                        createPostSheetOpened = true
+                    }
                 }
             ) {
-                Icon(
-                    imageVector = Icons.Default.Add,
-                    contentDescription = stringResource(R.string.create_new_post)
-                )
+                if (isCreatingPost) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(24.dp),
+                        strokeWidth = 2.dp
+                    )
+                } else {
+                    Icon(
+                        imageVector = Icons.Default.Add,
+                        contentDescription = stringResource(R.string.create_new_post)
+                    )
+                }
             }
         }
 
@@ -402,6 +416,7 @@ fun CreatePostSheetContent(
     Column(
         modifier = Modifier
             .fillMaxWidth()
+            .verticalScroll(rememberScrollState())
             .padding(horizontal = 16.dp, vertical = 4.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
@@ -459,14 +474,22 @@ fun CreatePostSheetContent(
         Spacer(modifier = Modifier.height(16.dp))
 
         // Post text input
+        val maxPostLength = 500
         OutlinedTextField(
             value = postText,
-            onValueChange = onPostTextChange,
+            onValueChange = { if (it.length <= maxPostLength) onPostTextChange(it) },
             label = { Text(stringResource(R.string.post_description_label)) },
             placeholder = { Text(stringResource(R.string.post_description_placeholder)) },
             modifier = Modifier.fillMaxWidth(),
             minLines = 3,
-            maxLines = 5
+            maxLines = 5,
+            supportingText = {
+                Text(
+                    text = "${postText.length}/$maxPostLength",
+                    modifier = Modifier.fillMaxWidth(),
+                    textAlign = TextAlign.End
+                )
+            }
         )
 
         Spacer(modifier = Modifier.height(16.dp))

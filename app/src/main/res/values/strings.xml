@@ -8,7 +8,7 @@
     <string name="sign_out_button_text">Sign Out</string>
     <string name="unknown_user_name">Unknown user</string>
     <string name="unknown_email">Unknown email</string>
-    <string name="favourites_screen_placeholder">You do not have favourites yet.</string>
+    <string name="favourites_screen_placeholder">You do not have favourites yet or failed to load data</string>
     <string name="search_screen_error_message">Unable to load data. Please, check your network connection and try again</string>
     <string name="default_notification_title">Catgram</string>
     <string name="default_notification_body">Hello!</string>
@@ -41,4 +41,6 @@
     <string name="sign_out_dialog_cancel">Cancel</string>
     <string name="notification_granted_toast">Notifications permission granted</string>
     <string name="notification_not_granted_toast">Notifications permission not granted</string>
+    <string name="snackbar_load_data_failed">Failed to load data</string>
+    <string name="sign_in_with_google_account">Sign in with Google Account</string>
 </resources>

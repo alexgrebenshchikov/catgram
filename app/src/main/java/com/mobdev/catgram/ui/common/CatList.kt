@@ -200,7 +200,7 @@ fun CatsApiCard(
             },
             error = {
                 Box(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.fillMaxWidth().aspectRatio(1f),
                     contentAlignment = Alignment.Center
                 ) {
                     androidx.compose.foundation.Image(
@@ -373,7 +373,7 @@ fun UserPostCard(
             },
             error = {
                 Box(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.fillMaxWidth().aspectRatio(1f),
                     contentAlignment = Alignment.Center
                 ) {
                     androidx.compose.foundation.Image(
@@ -420,10 +420,7 @@ private fun onClickFavouritesButton(
     isActivated: Boolean,
     onFavClick: FavClickCallback,
 ) {
-    //val initialState = isActivated.value
-    //isActivated.value = !isActivated.value
     isEnabled.value = false
-    //likesCounter.updateState(initialState)
 
     onFavClick(!isActivated, item) {
         isEnabled.value = true
