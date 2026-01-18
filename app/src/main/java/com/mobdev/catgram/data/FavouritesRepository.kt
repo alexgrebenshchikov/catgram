@@ -6,7 +6,7 @@ import com.google.firebase.firestore.FieldPath
 import com.google.firebase.firestore.QuerySnapshot
 import com.google.firebase.firestore.ktx.firestore
 import com.google.firebase.ktx.Firebase
-import com.mobdev.catgram.auth.getCurrentUserOrThrow
+import com.mobdev.catgram.auth.AuthProvider
 import com.mobdev.catgram.network.BreedInfo
 import com.mobdev.catgram.ui.common.CatCardData
 import kotlinx.coroutines.tasks.await
@@ -20,7 +20,9 @@ interface FavouritesRepository {
     suspend fun removeFromFavourites(itemId: String): Long
 }
 
-class FirebaseFavouritesRepository : FavouritesRepository {
+class FirebaseFavouritesRepository(
+    private val authProvider: AuthProvider
+) : FavouritesRepository {
     private val firestore = Firebase.firestore
     private lateinit var userDocRef: DocumentReference
     private val likesColRef = firestore.collection("likes")
@@ -28,7 +30,7 @@ class FirebaseFavouritesRepository : FavouritesRepository {
     private val catsApiColRef = firestore.collection("cats_api")
 
     override fun initialize() {
-        val currentUser = getCurrentUserOrThrow()
+        val currentUser = authProvider.getCurrentUserOrThrow()
         userDocRef = firestore.collection("users").document(currentUser.uid)
     }
 

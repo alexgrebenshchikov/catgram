@@ -1,0 +1,60 @@
+name: Run Tests
+
+on:
+  push:
+    branches: [ main, master, develop ]
+  pull_request:
+    branches: [ main, master, develop ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v3
+
+      - name: Cache Gradle packages
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          restore-keys: |
+            ${{ runner.os }}-gradle-
+
+      - name: Create secrets.properties
+        run: |
+          echo "IMGBB_API_KEY=${{ secrets.IMGBB_API_KEY }}" >> secrets.properties
+          echo "CAT_API_KEY=${{ secrets.CAT_API_KEY }}" >> secrets.properties
+
+      - name: Create release-signing.properties (dummy for tests)
+        run: |
+          echo "storeFile=dummy.keystore" >> release-signing.properties
+          echo "storePassword=dummy" >> release-signing.properties
+          echo "keyAlias=dummy" >> release-signing.properties
+          echo "keyPassword=dummy" >> release-signing.properties
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+
+      - name: Run unit tests
+        run: ./gradlew testDebugUnitTest --stacktrace
+
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-results
+          path: app/build/reports/tests/
+          retention-days: 7

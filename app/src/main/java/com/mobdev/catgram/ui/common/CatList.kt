@@ -67,7 +67,6 @@ import coil.compose.SubcomposeAsyncImageContent
 import coil.request.ImageRequest
 import com.google.firebase.Timestamp
 import com.mobdev.catgram.R
-import com.mobdev.catgram.auth.getCurrentUser
 import com.mobdev.catgram.network.BreedInfo
 import com.mobdev.catgram.ui.theme.CatgramTheme
 import com.mobdev.catgram.ui.theme.StarYellow
@@ -81,6 +80,7 @@ typealias CheckIsEnabledCallback = (String) -> Boolean
 typealias GetLikesCountCallback = ((String) -> Long?)?
 typealias OnErrorItemClicked = (() -> Unit)?
 typealias OnPostDeleteCallback = ((CatCardData.UserPost) -> Unit)?
+typealias CheckIsMyPostCallback = (String) -> Boolean
 
 @Composable
 fun CatList(
@@ -94,6 +94,7 @@ fun CatList(
     getLikesCount: GetLikesCountCallback,
     onErrorItemClicked: OnErrorItemClicked,
     onPostDeleteClick: OnPostDeleteCallback,
+    checkIsMyPostCallback: CheckIsMyPostCallback,
 ) {
     LazyColumn(
         state = listState,
@@ -112,7 +113,7 @@ fun CatList(
 
                 is CatCardData.UserPost -> UserPostCard(
                     item = item,
-                    isMyPost = getCurrentUser()?.uid == item.userId,
+                    isMyPost = checkIsMyPostCallback(item.userId),
                     onFavClick = onFavClick,
                     checkIsFavourite = checkIsFavourite,
                     checkIsEnabledCallback = checkIsEnabledCallback,

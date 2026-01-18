@@ -9,7 +9,7 @@ import com.google.firebase.firestore.Query
 import com.google.firebase.firestore.QuerySnapshot
 import com.google.firebase.firestore.ktx.firestore
 import com.google.firebase.ktx.Firebase
-import com.mobdev.catgram.auth.getCurrentUserOrThrow
+import com.mobdev.catgram.auth.AuthProvider
 import com.mobdev.catgram.logging.logger
 import com.mobdev.catgram.network.CatsData.CatsUserPostData
 import kotlinx.coroutines.Dispatchers
@@ -27,7 +27,9 @@ interface UserPostsRepository {
     fun reset()
 }
 
-class FirebaseUserPostsRepository() : UserPostsRepository {
+class FirebaseUserPostsRepository(
+    private val authProvider: AuthProvider
+) : UserPostsRepository {
     private val firestore = Firebase.firestore
     private val userPostsColRef = firestore.collection(USER_POSTS_COL)
     private var lastFetchedPost: DocumentSnapshot? = null
@@ -45,8 +47,8 @@ class FirebaseUserPostsRepository() : UserPostsRepository {
     }
 
     override suspend fun addUserPost(url: String, text: String, context: Context) {
-        val currentUser = getCurrentUserOrThrow()
-        val avatarUrl = GoogleSignIn.getLastSignedInAccount(context)?.photoUrl?.toString()
+        val currentUser = authProvider.getCurrentUserOrThrow()
+        val avatarUrl = authProvider.getAvatarUrl(context)?.toString()
         addUserPost(
             FirebaseUserPost(
                 userId = currentUser.uid,
@@ -71,7 +73,7 @@ class FirebaseUserPostsRepository() : UserPostsRepository {
         pageSize: Long,
         showOnlyMyPosts: Boolean
     ): List<CatsUserPostData> {
-        val currentUser = getCurrentUserOrThrow()
+        val currentUser = authProvider.getCurrentUserOrThrow()
         val snapshot = userPostsColRef
             .let {
                 if (showOnlyMyPosts) {
@@ -96,7 +98,7 @@ class FirebaseUserPostsRepository() : UserPostsRepository {
         last: DocumentSnapshot,
         showOnlyMyPosts: Boolean
     ): List<CatsUserPostData> {
-        val currentUser = getCurrentUserOrThrow()
+        val currentUser = authProvider.getCurrentUserOrThrow()
         val snapshot = userPostsColRef
             .let {
                 if (showOnlyMyPosts) {

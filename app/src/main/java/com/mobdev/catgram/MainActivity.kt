@@ -4,7 +4,6 @@ import android.Manifest
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
-import android.util.Log
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -21,10 +20,9 @@ import com.google.firebase.auth.ktx.auth
 import com.google.firebase.ktx.Firebase
 import com.google.firebase.messaging.FirebaseMessaging
 import com.mobdev.catgram.auth.SignInResult
-import com.mobdev.catgram.auth.createSignInLauncher
-import com.mobdev.catgram.auth.isSignedIn
 import com.mobdev.catgram.logging.logger
 import com.mobdev.catgram.ui.CatgramApp
+import com.mobdev.catgram.ui.UserInfo
 import com.mobdev.catgram.ui.screens.FavouritesViewModel
 import com.mobdev.catgram.ui.screens.FeedViewModel
 import com.mobdev.catgram.ui.theme.CatgramTheme
@@ -33,7 +31,6 @@ import kotlinx.coroutines.launch
 
 
 class MainActivity : ComponentActivity() {
-    private val signInLauncher = createSignInLauncher(this, ::updateUiAfterSignIn)
     private val requestPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission(),
     ) { isGranted: Boolean ->
@@ -54,18 +51,37 @@ class MainActivity : ComponentActivity() {
 
     private val uiState = UiState()
     private val mainViewModel: MainViewModel by viewModels()
+    private val authProvider by lazy {
+        (application as CatgramApplication).container.authProvider
+    }
+    private val signInLauncher by lazy {
+        authProvider.createSignInLauncher(this, ::updateUiAfterSignIn)
+    }
+
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         logger.d("${Firebase.auth.currentUser?.uid}")
-        uiState.signedIn.value = isSignedIn()
+        uiState.signedIn.value = authProvider.isSignedIn()
         mainViewModel.askForPostNotificationsPermissionIfNeeded(this, ::askNotificationPermission)
         scheduleOpenAppReminder(this.applicationContext)
         checkForUpdates()
         enableEdgeToEdge()
         setContent {
             CatgramTheme {
-                CatgramApp(this, signInLauncher, uiState)
+                CatgramApp(
+                    uiState = uiState,
+                    onSignInClick = { authProvider.signIn(this, signInLauncher) },
+                    onSignOutClick = { authProvider.signOut() },
+                    getUserInfoCallback = {
+                        val user = authProvider.getCurrentUserOrThrow()
+                        UserInfo(
+                            authProvider.getAvatarUrl(this),
+                            user.displayName,
+                            user.email
+                        )
+                    }
+                )
             }
         }
     }

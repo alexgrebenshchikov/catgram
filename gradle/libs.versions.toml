@@ -2,10 +2,12 @@
 agp = "8.7.1"
 appupdate = "1.0.1"
 coilCompose = "2.4.0"
+coroutinesTest = "1.7.3"
 credentials = "1.5.0-beta01"
 datastorePreferences = "1.0.0"
 firebaseBom = "33.6.0"
 guava = "31.1-android"
+mockk = "1.13.8"
 mlkitImageLabeling = "17.0.9"
 kotlin = "2.0.0"
 coreKtx = "1.15.0"
@@ -44,6 +46,10 @@ firebase-bom = { module = "com.google.firebase:firebase-bom", version.ref = "fir
 firebase-firestore = { module = "com.google.firebase:firebase-firestore" }
 guava = { module = "com.google.guava:guava", version.ref = "guava" }
 junit = { group = "junit", name = "junit", version.ref = "junit" }
+kotlinx-coroutines-test = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-test", version.ref = "coroutinesTest" }
+mockk = { module = "io.mockk:mockk", version.ref = "mockk" }
+mockk-android = { module = "io.mockk:mockk-android", version.ref = "mockk" }
+androidx-arch-core-testing = { module = "androidx.arch.core:core-testing", version = "2.2.0" }
 androidx-junit = { group = "androidx.test.ext", name = "junit", version.ref = "junitVersion" }
 androidx-espresso-core = { group = "androidx.test.espresso", name = "espresso-core", version.ref = "espressoCore" }
 androidx-lifecycle-runtime-ktx = { group = "androidx.lifecycle", name = "lifecycle-runtime-ktx", version.ref = "lifecycleRuntimeKtx" }

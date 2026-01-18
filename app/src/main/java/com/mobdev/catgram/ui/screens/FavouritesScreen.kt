@@ -61,6 +61,7 @@ fun FavouritesScreen() {
             getLikesCount = null,
             onErrorItemClicked = null,
             onPostDeleteClick = null,
+            checkIsMyPostCallback = { userId -> favViewModel.currentUser?.uid == userId }
         )
 
         if (itemList.isEmpty()) {

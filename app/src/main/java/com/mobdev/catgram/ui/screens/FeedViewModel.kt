@@ -1,7 +1,6 @@
 package com.mobdev.catgram.ui.screens
 
 import android.app.Application
-import android.content.Context
 import android.net.Uri
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -9,7 +8,6 @@ import androidx.compose.runtime.setValue
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.stringPreferencesKey
-import androidx.datastore.preferences.preferencesDataStore
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.ViewModelProvider.AndroidViewModelFactory.Companion.APPLICATION_KEY
@@ -18,8 +16,8 @@ import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.mobdev.catgram.CatgramApplication
 import com.mobdev.catgram.R
-import com.mobdev.catgram.auth.getCurrentUserOrThrow
-import com.mobdev.catgram.auth.isSignedIn
+import com.mobdev.catgram.auth.AuthProvider
+import com.mobdev.catgram.coroutines.DispatcherProvider
 import com.mobdev.catgram.data.CatgramApiRepository
 import com.mobdev.catgram.data.UserPostsRepository
 import com.mobdev.catgram.logging.logger
@@ -29,7 +27,6 @@ import com.mobdev.catgram.network.CatsData.CatsApiData
 import com.mobdev.catgram.network.CatsData.CatsUserPostData
 import com.mobdev.catgram.network.ImageUploader
 import com.mobdev.catgram.ui.common.CatCardData
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
@@ -43,7 +40,11 @@ class FeedViewModel(
     private val userPostsRepository: UserPostsRepository,
     private val imageUploader: ImageUploader,
     private val catDetector: CatDetector,
+    private val authProvider: AuthProvider,
+    private val dataStore: DataStore<Preferences>,
     private val context: Application,
+    private val dispatcherProvider: DispatcherProvider,
+    private val defaultFilterState: DefaultFilterState,
 ) : ViewModel() {
     val pageSize = 10
 
@@ -53,7 +54,7 @@ class FeedViewModel(
     private var lastLoadedPage = -1
 
     var uiState: FeedUiState by mutableStateOf(FeedUiState.Ready)
-        private set
+        internal set
     var snackbarMessage: String? by mutableStateOf(null)
         private set
     private var loadingDataPageJob: Job? = null
@@ -79,48 +80,51 @@ class FeedViewModel(
     var isCreatingPost: Boolean by mutableStateOf(false)
         private set
 
+    val currentUser
+        get() = authProvider.getCurrentUser()
+
     fun onScrolledToTop() {
         shouldScrollToTop = false
     }
 
     private val breedsKey: Preferences.Key<String>
             by lazy {
-                val userUid = getCurrentUserOrThrow().uid
+                val userUid = authProvider.getCurrentUserOrThrow().uid
                 stringPreferencesKey("$userUid:breeds")
             }
 
     private val filterTypeKey: Preferences.Key<String>
             by lazy {
-                val userUid = getCurrentUserOrThrow().uid
+                val userUid = authProvider.getCurrentUserOrThrow().uid
                 stringPreferencesKey("$userUid:filterType")
             }
 
     private val showOnlyMyPostsKey: Preferences.Key<String>
             by lazy {
-                val userUid = getCurrentUserOrThrow().uid
+                val userUid = authProvider.getCurrentUserOrThrow().uid
                 stringPreferencesKey("$userUid:showOnlyMyPosts")
             }
 
 
     init {
-        if (isSignedIn()) {
+        if (authProvider.isSignedIn()) {
             loadFilterState()
         }
     }
 
     fun loadFilterState() {
-        viewModelScope.launch(Dispatchers.Main.immediate) {
+        viewModelScope.launch(dispatcherProvider.mainImmediate) {
             if (uiState is FeedUiState.Loading) return@launch
             uiState = FeedUiState.Loading(true)
 
-            loadingFilterStateJob = viewModelScope.launch(Dispatchers.Main.immediate) {
+            loadingFilterStateJob = viewModelScope.launch(dispatcherProvider.mainImmediate) {
                 try {
                     val (result, filterType, showOnlyMyPostsEnabled, breedInfoList) = withContext(
-                        Dispatchers.IO
+                        dispatcherProvider.io
                     ) {
                         val breedInfoList = catgramApiRepository.getBreedList()
                         val breeds = breedInfoList.map { it.id }
-                        val prefs = context.dataStore.data.first()
+                        val prefs = dataStore.data.first()
                         val breedsFromStore = getBreedsFromStore(prefs)
                         val breedsResult = breeds.associateWith { false }.let {
                             it.plus(breedsFromStore.filter { entry -> breeds.contains(entry.key) && entry.value })
@@ -143,7 +147,7 @@ class FeedViewModel(
                 } catch (e: Throwable) {
                     logger.e("load filter state failed: ${e.message}", e)
                     uiState = FeedUiState.Error
-                    if (e is SSLHandshakeException || e.cause is SSLHandshakeException) {
+                    if (e is SSLHandshakeException) {
                         snackbarMessage = context.getString(R.string.snackbar_check_date_time)
                     }
                 }
@@ -156,7 +160,7 @@ class FeedViewModel(
         checkErrorState: Boolean = true,
         replace: Boolean = false
     ) {
-        viewModelScope.launch(Dispatchers.Main.immediate) {
+        viewModelScope.launch(dispatcherProvider.mainImmediate) {
             logger.d("loadMoreCatsItemsIfNeeded page: $page, uiState: $uiState")
             if (uiState is FeedUiState.Loading) {
                 return@launch
@@ -174,41 +178,40 @@ class FeedViewModel(
     }
 
     fun updateChoosedBreeds(breed: String, isChoosed: Boolean) {
-        viewModelScope.launch(Dispatchers.Main.immediate) {
+        viewModelScope.launch(dispatcherProvider.mainImmediate) {
             val newChoosedBreeds = choosedBreeds.plus(breed to isChoosed)
             choosedBreeds = newChoosedBreeds
-            withContext(Dispatchers.IO) {
+            withContext(dispatcherProvider.io) {
                 updateBreedsDataStore(newChoosedBreeds)
             }
         }
     }
 
     fun updateFilterType(type: FilterType) {
-        viewModelScope.launch(Dispatchers.Main.immediate) {
+        viewModelScope.launch(dispatcherProvider.mainImmediate) {
             selectedFilterType = type
-            withContext(Dispatchers.IO) {
+            withContext(dispatcherProvider.io) {
                 updateFilterTypeDataStore(type)
             }
         }
     }
 
     fun updateShowOnlyMyPosts(newValue: Boolean) {
-        viewModelScope.launch(Dispatchers.Main.immediate) {
+        viewModelScope.launch(dispatcherProvider.mainImmediate) {
             showOnlyMyPosts = newValue
-            withContext(Dispatchers.IO) {
+            withContext(dispatcherProvider.io) {
                 updateShowOnlyMyPostsDataStore(newValue)
             }
         }
     }
 
     fun createUserPost(imageUri: Uri, postText: String) {
-        // Check and set state on Main thread to prevent race condition
-        viewModelScope.launch(Dispatchers.Main.immediate) {
+        viewModelScope.launch(dispatcherProvider.mainImmediate) {
             if (isCreatingPost) return@launch
             isCreatingPost = true
 
             try {
-                val isCat = withContext(Dispatchers.IO) {
+                val isCat = withContext(dispatcherProvider.default) {
                     catDetector.isCatImage(context, imageUri).getOrThrow()
                 }
                 if (!isCat) {
@@ -216,7 +219,7 @@ class FeedViewModel(
                     return@launch
                 }
 
-                withContext(Dispatchers.IO) {
+                withContext(dispatcherProvider.io) {
                     val result = imageUploader.uploadImage(imageUri, context)
                     logger.d("img update res $result")
                     val imageUrl = result.getOrThrow().url
@@ -241,13 +244,13 @@ class FeedViewModel(
         snackbarMessage = null
     }
 
-    fun deleteUserPost(post: CatCardData.UserPost) {
-        viewModelScope.launch(Dispatchers.Main.immediate) {
+    fun deleteUserPost(postId: String) {
+        viewModelScope.launch(dispatcherProvider.mainImmediate) {
             try {
-                withContext(Dispatchers.IO) {
-                    userPostsRepository.deleteUserPost(post.id)
+                withContext(dispatcherProvider.io) {
+                    userPostsRepository.deleteUserPost(postId)
                 }
-                items = items.filter { it.id != post.id }
+                items = items.filter { it.id != postId }
                 logger.d("post delete success")
             } catch (e: Throwable) {
                 snackbarMessage = context.getString(R.string.snackbar_post_delete_failed)
@@ -257,7 +260,7 @@ class FeedViewModel(
     }
 
     fun refreshData() {
-        viewModelScope.launch(Dispatchers.Main.immediate) {
+        viewModelScope.launch(dispatcherProvider.mainImmediate) {
             partialReset()
             if (!isFilterStateLoaded()) {
                 loadFilterState()
@@ -268,7 +271,7 @@ class FeedViewModel(
     }
 
     fun reset() {
-        viewModelScope.launch(Dispatchers.Main.immediate) {
+        viewModelScope.launch(dispatcherProvider.mainImmediate) {
             partialReset()
             items = listOf()
             choosedBreeds = mapOf()
@@ -303,9 +306,9 @@ class FeedViewModel(
         val currentShowOnlyMyPosts = showOnlyMyPosts
         val currentChoosedBreeds = choosedBreeds.filter { it.value }.keys.toList()
 
-        loadingDataPageJob = viewModelScope.launch(Dispatchers.Main.immediate) {
+        loadingDataPageJob = viewModelScope.launch(dispatcherProvider.mainImmediate) {
             try {
-                val catsData = withContext(Dispatchers.IO) {
+                val catsData = withContext(dispatcherProvider.io) {
                     when (currentFilterType) {
                         FilterType.USERS_POSTS -> userPostsRepository.getNextUserPostsDataPage(
                             pageSize,
@@ -343,7 +346,7 @@ class FeedViewModel(
     }
 
     private suspend fun updateBreedsDataStore(newValue: Map<String, Boolean>) {
-        context.dataStore.updateData { prefs ->
+        dataStore.updateData { prefs ->
             prefs.toMutablePreferences().apply {
                 set(breedsKey, json.encodeToJsonElement(newValue).toString())
             }
@@ -357,11 +360,11 @@ class FeedViewModel(
             } catch (_: Throwable) {
                 null
             }
-        } ?: mapOf()
+        } ?: defaultFilterState.choosedBreeds
     }
 
     private suspend fun updateFilterTypeDataStore(newValue: FilterType) {
-        context.dataStore.updateData { prefs ->
+        dataStore.updateData { prefs ->
             prefs.toMutablePreferences().apply {
                 set(filterTypeKey, json.encodeToJsonElement(newValue).toString())
             }
@@ -375,11 +378,11 @@ class FeedViewModel(
             } catch (_: Throwable) {
                 null
             }
-        } ?: FilterType.CATS_BY_BREED
+        } ?: defaultFilterState.filterType
     }
 
     private suspend fun updateShowOnlyMyPostsDataStore(newValue: Boolean) {
-        context.dataStore.updateData { prefs ->
+        dataStore.updateData { prefs ->
             prefs.toMutablePreferences().apply {
                 set(showOnlyMyPostsKey, json.encodeToJsonElement(newValue).toString())
             }
@@ -393,7 +396,7 @@ class FeedViewModel(
             } catch (_: Throwable) {
                 null
             }
-        } ?: false
+        } ?: defaultFilterState.showOnlyMyPosts
     }
 
     private fun List<CatsApiData>.toCatsApiCardDataList(): List<CatCardData> =
@@ -415,21 +418,21 @@ class FeedViewModel(
     companion object {
         val factory: ViewModelProvider.Factory = viewModelFactory {
             initializer {
-                val application = (this[APPLICATION_KEY] as CatgramApplication)
-                val catgramRepository = application.container.catgramApiRepository
-                val userPostsRepository = application.container.userPostsRepository
-                val imageUploader = application.container.imageUploader
-                val catDetector = application.container.catDetector
+                val application = this[APPLICATION_KEY] as CatgramApplication
+                val container = application.container
                 FeedViewModel(
-                    catgramApiRepository = catgramRepository,
-                    userPostsRepository = userPostsRepository,
-                    imageUploader = imageUploader,
-                    catDetector = catDetector,
-                    context = application
+                    catgramApiRepository = container.catgramApiRepository,
+                    userPostsRepository = container.userPostsRepository,
+                    imageUploader = container.imageUploader,
+                    catDetector = container.catDetector,
+                    authProvider = container.authProvider,
+                    dataStore = container.feedDataStore,
+                    dispatcherProvider = container.dispatcherProvider,
+                    context = application,
+                    defaultFilterState = DefaultFilterState(mapOf(), FilterType.USERS_POSTS, false)
                 )
             }
         }
-        private val Context.dataStore: DataStore<Preferences> by preferencesDataStore("feed-filter")
     }
 
     sealed interface FeedUiState {
@@ -442,6 +445,12 @@ class FeedViewModel(
         USERS_POSTS,
         CATS_BY_BREED
     }
+
+    data class DefaultFilterState(
+        val choosedBreeds: Map<String, Boolean>,
+        val filterType: FilterType,
+        val showOnlyMyPosts: Boolean,
+    )
 
     private data class FilterStateData(
         val choosedBreeds: Map<String, Boolean>,

@@ -1,8 +1,6 @@
 package com.mobdev.catgram.ui
 
-import android.content.Intent
-import androidx.activity.ComponentActivity
-import androidx.activity.result.ActivityResultLauncher
+import android.net.Uri
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -31,14 +29,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.google.android.gms.auth.api.signin.GoogleSignIn
-import com.google.firebase.auth.ktx.auth
-import com.google.firebase.ktx.Firebase
 import com.mobdev.catgram.MainActivity
 import com.mobdev.catgram.MainViewModel
 import com.mobdev.catgram.R
-import com.mobdev.catgram.auth.signInViaGoogle
-import com.mobdev.catgram.auth.signOut
 import com.mobdev.catgram.logging.logger
 import com.mobdev.catgram.ui.BottomNavScreen.Companion.FAVOURITES_SCREEN_ID
 import com.mobdev.catgram.ui.BottomNavScreen.Companion.FEED_SCREEN_ID
@@ -52,8 +45,8 @@ import com.mobdev.catgram.ui.screens.StartScreen
 
 sealed class BottomNavScreen(val id: String, val labelResId: Int) {
     data object Feed : BottomNavScreen(FEED_SCREEN_ID, R.string.feed_screen_label)
-    data object Favourites : BottomNavScreen( FAVOURITES_SCREEN_ID, R.string.favourites_screen_label)
-    data object Profile : BottomNavScreen( PROFILE_SCREEN_ID, R.string.profile_screen_label)
+    data object Favourites : BottomNavScreen(FAVOURITES_SCREEN_ID, R.string.favourites_screen_label)
+    data object Profile : BottomNavScreen(PROFILE_SCREEN_ID, R.string.profile_screen_label)
 
     companion object {
         const val FEED_SCREEN_ID = "Feed"
@@ -64,9 +57,10 @@ sealed class BottomNavScreen(val id: String, val labelResId: Int) {
 
 @Composable
 fun CatgramApp(
-    activity: ComponentActivity,
-    signInLauncher: ActivityResultLauncher<Intent>,
-    uiState: MainActivity.UiState
+    uiState: MainActivity.UiState,
+    onSignInClick: () -> Unit,
+    onSignOutClick: () -> Unit,
+    getUserInfoCallback: () -> UserInfo
 ) {
     val screens = listOf(
         BottomNavScreen.Feed,
@@ -78,12 +72,14 @@ fun CatgramApp(
         save = {
             it.id
         },
-        restore = { when(it) {
-            FEED_SCREEN_ID -> BottomNavScreen.Feed
-            FAVOURITES_SCREEN_ID -> BottomNavScreen.Favourites
-            PROFILE_SCREEN_ID -> BottomNavScreen.Profile
-            else -> throw IllegalStateException("Should not reach.")
-        } }
+        restore = {
+            when (it) {
+                FEED_SCREEN_ID -> BottomNavScreen.Feed
+                FAVOURITES_SCREEN_ID -> BottomNavScreen.Favourites
+                PROFILE_SCREEN_ID -> BottomNavScreen.Profile
+                else -> throw IllegalStateException("Should not reach.")
+            }
+        }
     )
 
     var selectedScreen by rememberSaveable(
@@ -115,9 +111,10 @@ fun CatgramApp(
                 .padding(innerPadding)
         ) {
             if (!signedIn) {
-                StartScreen(uiState) {
-                    signInViaGoogle(activity, signInLauncher)
-                }
+                StartScreen(
+                    uiState = uiState,
+                    onGoogleSignInClick = onSignInClick
+                )
                 return@Box
             }
 
@@ -125,19 +122,17 @@ fun CatgramApp(
                 is BottomNavScreen.Feed -> FeedScreen()
                 is BottomNavScreen.Favourites -> FavouritesScreen()
                 is BottomNavScreen.Profile -> {
-                    val avatarUrl = GoogleSignIn.getLastSignedInAccount(activity)?.photoUrl
-                    val user = Firebase.auth.currentUser
-                        ?: throw IllegalStateException("User unauthorized.")
+                    val userInfo = getUserInfoCallback()
                     ProfileScreen(
-                        avatarUrl,
-                        user.displayName ?: stringResource(R.string.unknown_user_name),
-                        user.email ?: stringResource(
+                        userInfo.avatarUrl,
+                        userInfo.displayName ?: stringResource(R.string.unknown_user_name),
+                        userInfo.email ?: stringResource(
                             R.string.unknown_email
                         )
                     ) {
                         feedViewModel.reset()
                         favViewModel.reset()
-                        signOut()
+                        onSignOutClick()
                         uiState.signedIn.value = false
                         selectedScreen = BottomNavScreen.Feed
                     }
@@ -155,12 +150,13 @@ fun CatgramApp(
                     withDismissAction = true,
                     actionLabel = installButtonText,
                 ).let { snackbarResult ->
-                    when(snackbarResult) {
+                    when (snackbarResult) {
                         SnackbarResult.Dismissed -> {
-                            logger.d( "install dismissed")
+                            logger.d("install dismissed")
                         }
+
                         SnackbarResult.ActionPerformed -> {
-                            logger.d( "install acquired")
+                            logger.d("install acquired")
                             mainViewModel.completeUpdateRequested()
                         }
                     }
@@ -189,13 +185,15 @@ fun BottomNavigationBar(
                     Text(stringResource(screen.labelResId))
                 },
                 icon = {
-                    when(screen) {
+                    when (screen) {
                         BottomNavScreen.Favourites -> {
                             Icon(imageVector = Icons.Default.Star, contentDescription = null)
                         }
+
                         BottomNavScreen.Profile -> {
                             Icon(imageVector = Icons.Default.Person, contentDescription = null)
                         }
+
                         BottomNavScreen.Feed -> {
                             Icon(imageVector = Icons.Default.Feed, contentDescription = null)
                         }
@@ -205,3 +203,5 @@ fun BottomNavigationBar(
         }
     }
 }
+
+data class UserInfo(val avatarUrl: Uri?, val displayName: String?, val email: String?)

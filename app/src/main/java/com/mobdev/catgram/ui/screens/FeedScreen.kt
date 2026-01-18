@@ -150,7 +150,8 @@ fun FeedScreen() {
         state = state,
         contentAlignment = Alignment.BottomEnd
     ) {
-        CatList(itemList, isBottomLoading, isError, listState,
+        CatList(
+            itemList, isBottomLoading, isError, listState,
             onFavClick = { shouldAdd, item ->
                 if (shouldAdd) {
                     mainViewModel.startReviewFlow(context)
@@ -160,10 +161,11 @@ fun FeedScreen() {
                 }
             },
             checkIsFavourite = { id -> favViewModel.checkInFavourites(id) },
-            checkIsEnabledCallback = { id -> !favViewModel.checkIsUpdating(id) && isFavouritesReady},
+            checkIsEnabledCallback = { id -> !favViewModel.checkIsUpdating(id) && isFavouritesReady },
             getLikesCount = { id -> favViewModel.getLikesCount(id) },
             onErrorItemClicked = { feedViewModel.loadDataPageIfNeeded(checkErrorState = false) },
-            onPostDeleteClick = { feedViewModel.deleteUserPost(it) },
+            onPostDeleteClick = { feedViewModel.deleteUserPost(it.id) },
+            checkIsMyPostCallback = { userId -> feedViewModel.currentUser?.uid == userId },
         )
 
         // Trigger loading of more data when we reach the end of the list

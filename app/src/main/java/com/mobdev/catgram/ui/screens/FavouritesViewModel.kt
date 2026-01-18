@@ -10,7 +10,7 @@ import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.mobdev.catgram.CatgramApplication
-import com.mobdev.catgram.auth.isSignedIn
+import com.mobdev.catgram.auth.AuthProvider
 import com.mobdev.catgram.data.FavouritesRepository
 import com.mobdev.catgram.logging.logger
 import com.mobdev.catgram.ui.common.CatCardData
@@ -21,7 +21,8 @@ import kotlinx.coroutines.withContext
 
 
 class FavouritesViewModel(
-    private val favouritesRepository: FavouritesRepository
+    private val favouritesRepository: FavouritesRepository,
+    private val authProvider: AuthProvider
 ) : ViewModel() {
     var items by mutableStateOf<List<CatCardData>?>(listOf())
         private set
@@ -33,9 +34,11 @@ class FavouritesViewModel(
 
     var scrollPositionIndex: Int = 0
     var scrollPositionOffset: Int = 0
+    val currentUser
+        get() = authProvider.getCurrentUser()
 
     init {
-        if (isSignedIn()) {
+        if (authProvider.isSignedIn()) {
             initialize()
         }
     }
@@ -177,9 +180,11 @@ class FavouritesViewModel(
     companion object {
         val factory: ViewModelProvider.Factory = viewModelFactory {
             initializer {
-                val application = (this[APPLICATION_KEY] as CatgramApplication)
-                val favouritesRepository = application.container.favouritesRepository
-                FavouritesViewModel(favouritesRepository)
+                val container = (this[APPLICATION_KEY] as CatgramApplication).container
+                FavouritesViewModel(
+                    favouritesRepository = container.favouritesRepository,
+                    authProvider = container.authProvider
+                )
             }
         }
     }
