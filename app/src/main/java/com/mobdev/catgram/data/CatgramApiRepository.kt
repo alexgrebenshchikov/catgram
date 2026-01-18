@@ -1,5 +1,7 @@
 package com.mobdev.catgram.data
 
+import android.util.Log
+import com.mobdev.catgram.BuildConfig
 import com.mobdev.catgram.network.BreedInfo
 import com.mobdev.catgram.network.CatgramApiService
 import com.mobdev.catgram.network.CatsData.CatsApiData
@@ -21,9 +23,8 @@ class NetworkCatgramApiRepository(private val catgramApiService: CatgramApiServi
         breedIds: List<String>,
         page: Int
     ): List<CatsApiData> {
-        val apiKey = "live_DLVLuhSCT0Oc54KIL9cYIqIpJeJsYQACOGTL5ajdNIFDSIZxNCibgXMCJRaUXOdE"
         val order = "DESC"
-        return catgramApiService.getCatsData(limit, breedIds, page, order, apiKey)
+        return catgramApiService.getCatsData(limit, breedIds, page, order, BuildConfig.CAT_API_KEY)
     }
 
     override suspend fun getBreedList(): List<BreedInfo> {

@@ -10,7 +10,8 @@ import androidx.core.graphics.scale
 import androidx.exifinterface.media.ExifInterface
 import java.io.ByteArrayOutputStream
 
-private const val API_KEY: String = "d7d190f7551b2c5f02a6e90822c022ee"
+import com.mobdev.catgram.BuildConfig
+
 private const val MAX_IMAGE_DIMENSION = 1200
 private const val JPEG_QUALITY = 85
 
@@ -28,7 +29,7 @@ class ImageUploader(
                 ?: return Result.failure(Throwable("Failed to process image"))
             // Call API
             val response = apiService.uploadImage(
-                apiKey = API_KEY,
+                apiKey = BuildConfig.IMGBB_API_KEY,
                 imageBase64 = base64Image
             )
 
@@ -58,7 +59,8 @@ class ImageUploader(
             // Calculate sample size for initial downscaling (power of 2)
             var sampleSize = 1
             while (originalWidth / sampleSize > MAX_IMAGE_DIMENSION * 2 ||
-                   originalHeight / sampleSize > MAX_IMAGE_DIMENSION * 2) {
+                originalHeight / sampleSize > MAX_IMAGE_DIMENSION * 2
+            ) {
                 sampleSize *= 2
             }
 
@@ -117,7 +119,8 @@ class ImageUploader(
             }
 
             val matrix = Matrix().apply { postRotate(rotation) }
-            val rotatedBitmap = Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true)
+            val rotatedBitmap =
+                Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true)
             if (rotatedBitmap != bitmap) {
                 bitmap.recycle()
             }

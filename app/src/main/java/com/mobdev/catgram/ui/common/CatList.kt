@@ -8,38 +8,37 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -47,24 +46,22 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.composed
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import java.text.SimpleDateFormat
-import java.util.Locale
 import coil.compose.SubcomposeAsyncImage
 import coil.compose.SubcomposeAsyncImageContent
 import coil.request.ImageRequest
@@ -75,10 +72,12 @@ import com.mobdev.catgram.network.BreedInfo
 import com.mobdev.catgram.ui.theme.CatgramTheme
 import com.mobdev.catgram.ui.theme.StarYellow
 import com.mobdev.catgram.utils.getNameAndDescription
-import java.util.Date
+import java.text.SimpleDateFormat
+import java.util.Locale
 
-typealias FavClickCallback = (Boolean, CatCardData, () -> Unit) -> Unit
+typealias FavClickCallback = (Boolean, CatCardData) -> Unit
 typealias CheckIsFavCallback = (String) -> Boolean
+typealias CheckIsEnabledCallback = (String) -> Boolean
 typealias GetLikesCountCallback = ((String) -> Long?)?
 typealias OnErrorItemClicked = (() -> Unit)?
 typealias OnPostDeleteCallback = ((CatCardData.UserPost) -> Unit)?
@@ -91,10 +90,10 @@ fun CatList(
     listState: LazyListState,
     onFavClick: FavClickCallback,
     checkIsFavourite: CheckIsFavCallback,
+    checkIsEnabledCallback: CheckIsEnabledCallback,
     getLikesCount: GetLikesCountCallback,
     onErrorItemClicked: OnErrorItemClicked,
     onPostDeleteClick: OnPostDeleteCallback,
-    isFavouritesReady: Boolean
 ) {
     LazyColumn(
         state = listState,
@@ -107,8 +106,8 @@ fun CatList(
                     item = item,
                     onFavClick = onFavClick,
                     checkIsFavourite = checkIsFavourite,
+                    checkIsEnabledCallback = checkIsEnabledCallback,
                     getLikesCount = getLikesCount,
-                    isFavouritesReady = isFavouritesReady
                 )
 
                 is CatCardData.UserPost -> UserPostCard(
@@ -116,8 +115,8 @@ fun CatList(
                     isMyPost = getCurrentUser()?.uid == item.userId,
                     onFavClick = onFavClick,
                     checkIsFavourite = checkIsFavourite,
+                    checkIsEnabledCallback = checkIsEnabledCallback,
                     getLikesCount = getLikesCount,
-                    isFavouritesReady = isFavouritesReady,
                     onPostDeleteCallback = { onPostDeleteClick?.invoke(item) }
                 )
             }
@@ -168,13 +167,10 @@ fun CatsApiCard(
     onFavClick: FavClickCallback,
     checkIsFavourite: CheckIsFavCallback,
     getLikesCount: GetLikesCountCallback?,
-    isFavouritesReady: Boolean
+    checkIsEnabledCallback: CheckIsEnabledCallback
 ) {
     val isActivated = checkIsFavourite(item.id)
-
-    val isEnabled = rememberSaveable { mutableStateOf(true) }
-    isEnabled.value = isEnabled.value && isFavouritesReady
-
+    val isEnabled = checkIsEnabledCallback(item.id)
     val likesCounter = getLikesCount?.invoke(item.id)
 
     Card(
@@ -200,7 +196,9 @@ fun CatsApiCard(
             },
             error = {
                 Box(
-                    modifier = Modifier.fillMaxWidth().aspectRatio(1f),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .aspectRatio(1f),
                     contentAlignment = Alignment.Center
                 ) {
                     androidx.compose.foundation.Image(
@@ -217,16 +215,9 @@ fun CatsApiCard(
             ExpandableHeadingWithDetail(it.first, it.second)
         }
         FavouritesButton(
-            isEnabled = isEnabled.value,
+            isEnabled = isEnabled,
             isActivated = isActivated,
-            onClick = {
-                onClickFavouritesButton(
-                    item,
-                    isEnabled,
-                    isActivated,
-                    onFavClick
-                )
-            },
+            onClick = { onFavClick(!isActivated, item) },
             likesCounter = likesCounter
         )
     }
@@ -239,13 +230,11 @@ fun UserPostCard(
     onFavClick: FavClickCallback,
     checkIsFavourite: CheckIsFavCallback,
     getLikesCount: GetLikesCountCallback?,
-    isFavouritesReady: Boolean,
-    onPostDeleteCallback: (() -> Unit)? = null
+    onPostDeleteCallback: (() -> Unit)? = null,
+    checkIsEnabledCallback: CheckIsEnabledCallback
 ) {
     val isActivated = checkIsFavourite(item.id)
-
-    val isEnabled = rememberSaveable { mutableStateOf(true) }
-    isEnabled.value = isEnabled.value && isFavouritesReady
+    val isEnabled = checkIsEnabledCallback(item.id)
 
     val likesCounter = getLikesCount?.invoke(item.id)
     var showDeleteDialog by rememberSaveable { mutableStateOf(false) }
@@ -373,7 +362,9 @@ fun UserPostCard(
             },
             error = {
                 Box(
-                    modifier = Modifier.fillMaxWidth().aspectRatio(1f),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .aspectRatio(1f),
                     contentAlignment = Alignment.Center
                 ) {
                     androidx.compose.foundation.Image(
@@ -399,31 +390,11 @@ fun UserPostCard(
         }
 
         FavouritesButton(
-            isEnabled = isEnabled.value,
+            isEnabled = isEnabled,
             isActivated = isActivated,
-            onClick = {
-                onClickFavouritesButton(
-                    item,
-                    isEnabled,
-                    isActivated,
-                    onFavClick
-                )
-            },
+            onClick = { onFavClick(!isActivated, item) },
             likesCounter = likesCounter
         )
-    }
-}
-
-private fun onClickFavouritesButton(
-    item: CatCardData,
-    isEnabled: MutableState<Boolean>,
-    isActivated: Boolean,
-    onFavClick: FavClickCallback,
-) {
-    isEnabled.value = false
-
-    onFavClick(!isActivated, item) {
-        isEnabled.value = true
     }
 }
 
@@ -558,7 +529,7 @@ private fun Modifier.shimmerEffect(): Modifier = composed {
 @Composable
 fun FavouritesButtonPreview() {
     CatgramTheme {
-        FavouritesButton(true, false, 2, {})
+        FavouritesButton(isEnabled = true, isActivated = false, likesCounter = 2, onClick = {})
     }
 }
 
@@ -567,11 +538,12 @@ fun FavouritesButtonPreview() {
 fun CatsApiCardPreview() {
     CatgramTheme {
         CatsApiCard(
-            CatCardData.CatsApi("id", "url", listOf(BreedInfo("id", "name", "description"))),
-            { _, _, _ -> },
-            { true },
-            { _ -> 0 },
-            true
+            item = CatCardData.CatsApi("id", "url", listOf(BreedInfo("id", "name", "description"))),
+            onFavClick = { _, _ -> },
+            checkIsFavourite = { true },
+
+            getLikesCount = { _ -> 0 },
+            checkIsEnabledCallback = { true }
         )
     }
 }
@@ -581,13 +553,21 @@ fun CatsApiCardPreview() {
 fun UserPostCardPreview() {
     CatgramTheme {
         UserPostCard(
-            CatCardData.UserPost("id", "user id", "url", "text", "user", "avatar_url", Timestamp(0, 0)),
+            item = CatCardData.UserPost(
+                "id",
+                "user id",
+                "url",
+                "text",
+                "user",
+                "avatar_url",
+                Timestamp(0, 0)
+            ),
             isMyPost = true,
-            onFavClick = { _, _, _ -> },
+            onFavClick = { _, _ -> },
             checkIsFavourite = { true },
             getLikesCount = { _ -> 0 },
-            true,
-            onPostDeleteCallback = {}
+            onPostDeleteCallback = {},
+            checkIsEnabledCallback = { true }
         )
     }
 }

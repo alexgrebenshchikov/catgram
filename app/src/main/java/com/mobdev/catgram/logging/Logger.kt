@@ -2,7 +2,7 @@ package com.mobdev.catgram.logging
 
 import android.util.Log
 
-val logger: CatgramLogger = CatgramLoggerStub()
+val logger: CatgramLogger = CatgramLoggerImpl()
 
 interface CatgramLogger {
     fun d(message: String)

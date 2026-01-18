@@ -24,6 +24,7 @@ import com.mobdev.catgram.data.CatgramApiRepository
 import com.mobdev.catgram.data.UserPostsRepository
 import com.mobdev.catgram.logging.logger
 import com.mobdev.catgram.ml.CatDetector
+import com.mobdev.catgram.network.BreedInfo
 import com.mobdev.catgram.network.CatsData.CatsApiData
 import com.mobdev.catgram.network.CatsData.CatsUserPostData
 import com.mobdev.catgram.network.ImageUploader
@@ -55,7 +56,8 @@ class FeedViewModel(
         private set
     var snackbarMessage: String? by mutableStateOf(null)
         private set
-    private var loadingJob: Job? = null
+    private var loadingDataPageJob: Job? = null
+    private var loadingFilterStateJob: Job? = null
     private var isAllCatsDataLoaded = false
 
     var selectedFilterType by mutableStateOf(FilterType.CATS_BY_BREED)
@@ -107,34 +109,43 @@ class FeedViewModel(
     }
 
     fun loadFilterState() {
-        uiState = FeedUiState.Loading(true)
-        viewModelScope.launch(Dispatchers.IO) {
-            try {
-                val breedInfoList = catgramApiRepository.getBreedList()
-                val breeds = breedInfoList.map { it.id }
+        viewModelScope.launch(Dispatchers.Main.immediate) {
+            if (uiState is FeedUiState.Loading) return@launch
+            uiState = FeedUiState.Loading(true)
 
-                context.dataStore.data.first().let { prefs ->
-                    val breedsFromStore = getBreedsFromStore(prefs)
-                    val result = breeds.associateWith { false }.let {
-                        it.plus(breedsFromStore.filter { entry -> breeds.contains(entry.key) && entry.value })
+            loadingFilterStateJob = viewModelScope.launch(Dispatchers.Main.immediate) {
+                try {
+                    val (result, filterType, showOnlyMyPostsEnabled, breedInfoList) = withContext(
+                        Dispatchers.IO
+                    ) {
+                        val breedInfoList = catgramApiRepository.getBreedList()
+                        val breeds = breedInfoList.map { it.id }
+                        val prefs = context.dataStore.data.first()
+                        val breedsFromStore = getBreedsFromStore(prefs)
+                        val breedsResult = breeds.associateWith { false }.let {
+                            it.plus(breedsFromStore.filter { entry -> breeds.contains(entry.key) && entry.value })
+                        }
+                        updateBreedsDataStore(breedsResult)
+                        FilterStateData(
+                            breedsResult,
+                            getFilterTypeFromStore(prefs),
+                            getShowOnlyMyPostsFromStore(prefs),
+                            breedInfoList
+                        )
                     }
-                    updateBreedsDataStore(result)
-                    val filterType = getFilterTypeFromStore(prefs)
-                    val showOnlyMyPostsEnabled = getShowOnlyMyPostsFromStore(prefs)
-                    withContext(Dispatchers.Main) {
-                        selectedFilterType = filterType
-                        showOnlyMyPosts = showOnlyMyPostsEnabled
-                        breedIdToName = breedInfoList.associate { it.id to it.name }
-                        choosedBreeds = result
-                        uiState = FeedUiState.Ready
-                        loadDataPageIfNeeded(page = 0,)
+
+                    selectedFilterType = filterType
+                    showOnlyMyPosts = showOnlyMyPostsEnabled
+                    breedIdToName = breedInfoList.associate { it.id to it.name }
+                    choosedBreeds = result
+                    uiState = FeedUiState.Ready
+                    loadCatsDataPage(page = 0, replace = true)
+                } catch (e: Throwable) {
+                    logger.e("load filter state failed: ${e.message}", e)
+                    uiState = FeedUiState.Error
+                    if (e is SSLHandshakeException || e.cause is SSLHandshakeException) {
+                        snackbarMessage = context.getString(R.string.snackbar_check_date_time)
                     }
-                }
-            } catch (e: Throwable) {
-                logger.e( "load choosed breeds failed: ${e.message}", e)
-                uiState = FeedUiState.Error
-                if (e is SSLHandshakeException) {
-                    snackbarMessage = context.getString(R.string.snackbar_check_date_time)
                 }
             }
         }
@@ -145,70 +156,80 @@ class FeedViewModel(
         checkErrorState: Boolean = true,
         replace: Boolean = false
     ) {
-        logger.d( "loadMoreCatsItemsIfNeeded page: $page, uiState: $uiState")
-        if (uiState is FeedUiState.Loading) {
-            return
-        }
+        viewModelScope.launch(Dispatchers.Main.immediate) {
+            logger.d("loadMoreCatsItemsIfNeeded page: $page, uiState: $uiState")
+            if (uiState is FeedUiState.Loading) {
+                return@launch
+            }
 
-        if (checkErrorState && uiState == FeedUiState.Error) {
-            return
-        }
+            if (checkErrorState && uiState == FeedUiState.Error) {
+                return@launch
+            }
 
-        val page = page ?: (lastLoadedPage + 1)
-        if (!isAllCatsDataLoaded && isFilterStateLoaded() && page > lastLoadedPage) {
-            loadCatsDataPage(page, replace)
+            val page = page ?: (lastLoadedPage + 1)
+            if (!isAllCatsDataLoaded && isFilterStateLoaded() && page > lastLoadedPage) {
+                loadCatsDataPage(page, replace)
+            }
         }
     }
 
     fun updateChoosedBreeds(breed: String, isChoosed: Boolean) {
-        val newChoosedBreeds = choosedBreeds.plus(breed to isChoosed)
-        viewModelScope.launch(Dispatchers.IO) {
-            updateBreedsDataStore(newChoosedBreeds)
-            withContext(Dispatchers.Main) {
-                choosedBreeds = newChoosedBreeds
+        viewModelScope.launch(Dispatchers.Main.immediate) {
+            val newChoosedBreeds = choosedBreeds.plus(breed to isChoosed)
+            choosedBreeds = newChoosedBreeds
+            withContext(Dispatchers.IO) {
+                updateBreedsDataStore(newChoosedBreeds)
             }
         }
     }
 
     fun updateFilterType(type: FilterType) {
-        viewModelScope.launch(Dispatchers.IO) {
-            updateFilterTypeDataStore(type)
-            withContext(Dispatchers.Main) {
-                selectedFilterType = type
+        viewModelScope.launch(Dispatchers.Main.immediate) {
+            selectedFilterType = type
+            withContext(Dispatchers.IO) {
+                updateFilterTypeDataStore(type)
             }
         }
     }
 
     fun updateShowOnlyMyPosts(newValue: Boolean) {
-        viewModelScope.launch(Dispatchers.IO) {
-            updateShowOnlyMyPostsDataStore(newValue)
-            withContext(Dispatchers.Main) {
-                showOnlyMyPosts = newValue
+        viewModelScope.launch(Dispatchers.Main.immediate) {
+            showOnlyMyPosts = newValue
+            withContext(Dispatchers.IO) {
+                updateShowOnlyMyPostsDataStore(newValue)
             }
         }
     }
 
     fun createUserPost(imageUri: Uri, postText: String) {
-        viewModelScope.launch(Dispatchers.IO) {
+        // Check and set state on Main thread to prevent race condition
+        viewModelScope.launch(Dispatchers.Main.immediate) {
+            if (isCreatingPost) return@launch
             isCreatingPost = true
+
             try {
-                val catDetectionResult = catDetector.isCatImage(context, imageUri)
-                val isCat = catDetectionResult.getOrThrow()
+                val isCat = withContext(Dispatchers.IO) {
+                    catDetector.isCatImage(context, imageUri).getOrThrow()
+                }
                 if (!isCat) {
                     snackbarMessage = context.getString(R.string.snackbar_upload_cat_image)
                     return@launch
                 }
 
-                val result = imageUploader.uploadImage(imageUri, context)
-                logger.d( "img update res $result")
-                val imageUrl = result.getOrThrow().url
-                userPostsRepository.addUserPost(imageUrl, postText, context)
+                withContext(Dispatchers.IO) {
+                    val result = imageUploader.uploadImage(imageUri, context)
+                    logger.d("img update res $result")
+                    val imageUrl = result.getOrThrow().url
+                    userPostsRepository.addUserPost(imageUrl, postText, context)
+                }
+
                 if (selectedFilterType == FilterType.USERS_POSTS) {
                     refreshData()
                 }
                 snackbarMessage = context.getString(R.string.snackbar_post_created)
+                logger.d("post create success")
             } catch (e: Throwable) {
-                logger.e( "post create failed: ${e.message}", e)
+                logger.e("post create failed: ${e.message}", e)
                 snackbarMessage = context.getString(R.string.snackbar_post_create_failed)
             } finally {
                 isCreatingPost = false
@@ -221,44 +242,50 @@ class FeedViewModel(
     }
 
     fun deleteUserPost(post: CatCardData.UserPost) {
-        viewModelScope.launch(Dispatchers.IO) {
+        viewModelScope.launch(Dispatchers.Main.immediate) {
             try {
-                userPostsRepository.deleteUserPost(post.id)
-                withContext(Dispatchers.Main) {
-                    items = items.filter { it.id != post.id }
+                withContext(Dispatchers.IO) {
+                    userPostsRepository.deleteUserPost(post.id)
                 }
+                items = items.filter { it.id != post.id }
+                logger.d("post delete success")
             } catch (e: Throwable) {
                 snackbarMessage = context.getString(R.string.snackbar_post_delete_failed)
-                logger.e( "Failed to delete post ${e.message}", e)
+                logger.e("Failed to delete post ${e.message}", e)
             }
         }
     }
 
     fun refreshData() {
-        resetItems()
-        if (!isFilterStateLoaded()) {
-            loadFilterState()
-        } else {
-            loadDataPageIfNeeded(page = 0, replace = true)
+        viewModelScope.launch(Dispatchers.Main.immediate) {
+            partialReset()
+            if (!isFilterStateLoaded()) {
+                loadFilterState()
+            } else {
+                loadCatsDataPage(page = 0, replace = true)
+            }
         }
     }
 
     fun reset() {
-        resetItems()
-        items = listOf()
-        choosedBreeds = mapOf()
-        breedIdToName = mapOf()
+        viewModelScope.launch(Dispatchers.Main.immediate) {
+            partialReset()
+            items = listOf()
+            choosedBreeds = mapOf()
+            breedIdToName = mapOf()
+        }
     }
 
     private fun isFilterStateLoaded() = choosedBreeds.isNotEmpty()
 
-    private fun resetItems() {
+    private fun partialReset() {
         uiState = FeedUiState.Ready
         itemsIds = mutableSetOf()
         isAllCatsDataLoaded = false
         lastLoadedPage = -1
         userPostsRepository.reset()
-        loadingJob?.cancel()
+        loadingDataPageJob?.cancel()
+        loadingFilterStateJob?.cancel()
         scrollPositionIndex = 0
         scrollPositionOffset = 0
     }
@@ -267,43 +294,48 @@ class FeedViewModel(
         return breedIdToName[breedId] ?: throw IllegalStateException("Wrong breed id")
     }
 
-    private fun loadCatsDataPage(currentPage: Int, replace: Boolean) {
-        logger.d( "loadCatsDataPage $currentPage")
-        uiState = FeedUiState.Loading(currentPage == 0)
+    private fun loadCatsDataPage(page: Int, replace: Boolean) {
+        logger.d("loadCatsDataPage $page")
 
-        loadingJob = viewModelScope.launch(Dispatchers.IO) {
+        uiState = FeedUiState.Loading(page == 0)
+
+        val currentFilterType = selectedFilterType
+        val currentShowOnlyMyPosts = showOnlyMyPosts
+        val currentChoosedBreeds = choosedBreeds.filter { it.value }.keys.toList()
+
+        loadingDataPageJob = viewModelScope.launch(Dispatchers.Main.immediate) {
             try {
-                val catsData = when (selectedFilterType) {
-                    FilterType.USERS_POSTS -> userPostsRepository.getNextUserPostsDataPage(
-                        pageSize,
-                        showOnlyMyPosts
-                    ).toUserPostCardDataList()
+                val catsData = withContext(Dispatchers.IO) {
+                    when (currentFilterType) {
+                        FilterType.USERS_POSTS -> userPostsRepository.getNextUserPostsDataPage(
+                            pageSize,
+                            currentShowOnlyMyPosts
+                        ).toUserPostCardDataList()
 
-                    FilterType.CATS_BY_BREED -> catgramApiRepository.getCatsData(
-                        pageSize,
-                        choosedBreeds.filter { it.value }.keys.toList(),
-                        currentPage
-                    ).toCatsApiCardDataList()
+                        FilterType.CATS_BY_BREED -> catgramApiRepository.getCatsData(
+                            pageSize,
+                            currentChoosedBreeds,
+                            page
+                        ).toCatsApiCardDataList()
+                    }
                 }
 
-                withContext(Dispatchers.Main) {
-                    val newItems = catsData.filter { !itemsIds.contains(it.id) }
-                    if (newItems.isEmpty()) {
-                        isAllCatsDataLoaded = true
-                        uiState = FeedUiState.Ready
-                        return@withContext
-                    }
-                    lastLoadedPage = currentPage
-                    itemsIds.addAll(newItems.map { it.id })
-                    items = if (replace) newItems else items + newItems
-                    logger.d( "items: ${items.size}")
+                val newItems = catsData.filter { !itemsIds.contains(it.id) }
+                if (newItems.isEmpty()) {
+                    isAllCatsDataLoaded = true
                     uiState = FeedUiState.Ready
-                    if (currentPage == 0) {
-                        shouldScrollToTop = true
-                    }
+                    return@launch
+                }
+                lastLoadedPage = page
+                itemsIds.addAll(newItems.map { it.id })
+                items = if (replace) newItems else items + newItems
+                logger.d("items: ${items.size}")
+                uiState = FeedUiState.Ready
+                if (page == 0) {
+                    shouldScrollToTop = true
                 }
             } catch (error: Throwable) {
-                logger.e( "load cats data failed: ${error.message}", error)
+                logger.e("load cats data failed: ${error.message}", error)
                 uiState = FeedUiState.Error
                 snackbarMessage = context.getString(R.string.snackbar_load_data_failed)
             }
@@ -410,4 +442,11 @@ class FeedViewModel(
         USERS_POSTS,
         CATS_BY_BREED
     }
+
+    private data class FilterStateData(
+        val choosedBreeds: Map<String, Boolean>,
+        val filterType: FilterType,
+        val showOnlyMyPosts: Boolean,
+        val breedInfoList: List<BreedInfo>
+    )
 }

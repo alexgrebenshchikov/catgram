@@ -9,10 +9,6 @@ import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
@@ -29,7 +25,7 @@ fun FavouritesScreen() {
     val itemList = favViewModel.items ?: listOf()
     val isLoading = false
     val isError = false
-    val isFavouritesReady = favViewModel.items != null
+    val isFavouritesReady = favViewModel.items != null && !favViewModel.isLoading
     val listState = rememberLazyListState(
         initialFirstVisibleItemIndex = favViewModel.scrollPositionIndex,
         initialFirstVisibleItemScrollOffset = favViewModel.scrollPositionOffset
@@ -40,34 +36,31 @@ fun FavouritesScreen() {
             favViewModel.scrollPositionOffset = listState.firstVisibleItemScrollOffset
         }
     }
-    var isRefreshing by remember { mutableStateOf(false) }
+    val isRefreshing  = favViewModel.isLoading
     val state = rememberPullToRefreshState()
 
     PullToRefreshBox(
         isRefreshing = isRefreshing,
         onRefresh = {
-            isRefreshing = true
-            favViewModel.fetchFavourites {
-                isRefreshing = false
-            }
+            favViewModel.fetchFavourites()
         },
         state = state,
         contentAlignment = Alignment.Center
     ) {
         CatList(
             itemList, isLoading, isError, listState,
-            onFavClick = { shouldAdd, item, onFinish ->
+            onFavClick = { shouldAdd, item ->
                 if (shouldAdd) {
-                    favViewModel.addToFavourites(item, onFinish)
+                    favViewModel.addToFavourites(item)
                 } else {
-                    favViewModel.removeFromFavourites(item, onFinish)
+                    favViewModel.removeFromFavourites(item)
                 }
             },
             checkIsFavourite = { id -> favViewModel.checkInFavourites(id) },
+            checkIsEnabledCallback = { id -> !favViewModel.checkIsUpdating(id) && isFavouritesReady},
             getLikesCount = null,
             onErrorItemClicked = null,
             onPostDeleteClick = null,
-            isFavouritesReady = isFavouritesReady,
         )
 
         if (itemList.isEmpty()) {

@@ -12,7 +12,9 @@ import com.google.firebase.ktx.Firebase
 import com.mobdev.catgram.auth.getCurrentUserOrThrow
 import com.mobdev.catgram.logging.logger
 import com.mobdev.catgram.network.CatsData.CatsUserPostData
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.tasks.await
+import kotlinx.coroutines.withContext
 
 interface UserPostsRepository {
     suspend fun getNextUserPostsDataPage(
@@ -34,7 +36,10 @@ class FirebaseUserPostsRepository() : UserPostsRepository {
         pageSize: Int,
         showOnlyMyPosts: Boolean,
     ): List<CatsUserPostData> {
-        return lastFetchedPost?.let {
+        val lastPost = withContext(Dispatchers.Main) {
+            lastFetchedPost
+        }
+        return lastPost?.let {
             getNextPage(pageSize.toLong(), it, showOnlyMyPosts)
         } ?: getFirstPage(pageSize.toLong(), showOnlyMyPosts)
     }
@@ -80,8 +85,10 @@ class FirebaseUserPostsRepository() : UserPostsRepository {
             .get()
             .await()
 
-        lastFetchedPost = snapshot.documents.lastOrNull()
-        return snapshot.toCatsUserPostDataList()
+        return withContext(Dispatchers.Main) {
+            lastFetchedPost = snapshot.documents.lastOrNull()
+            return@withContext snapshot.toCatsUserPostDataList()
+        }
     }
 
     private suspend fun getNextPage(
@@ -104,8 +111,10 @@ class FirebaseUserPostsRepository() : UserPostsRepository {
             .get()
             .await()
 
-        lastFetchedPost = snapshot.documents.lastOrNull() ?: return emptyList()
-        return snapshot.toCatsUserPostDataList()
+        return withContext(Dispatchers.Main) {
+            lastFetchedPost = snapshot.documents.lastOrNull() ?: return@withContext emptyList()
+            return@withContext snapshot.toCatsUserPostDataList()
+        }
     }
 
     private suspend fun addUserPost(post: FirebaseUserPost) {

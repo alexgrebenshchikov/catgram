@@ -108,7 +108,7 @@ fun FeedScreen() {
     val selectedFilterType = feedViewModel.selectedFilterType
     val showOnlyMyPosts = feedViewModel.showOnlyMyPosts
     val breedsLoaded = feedViewModel.choosedBreeds.isNotEmpty()
-    val isFavouritesReady = favViewModel.items != null
+    val isFavouritesReady = favViewModel.items != null && !favViewModel.isLoading
 
     // Create Post sheet state
     val createPostSheetState = rememberModalBottomSheetState(
@@ -151,19 +151,19 @@ fun FeedScreen() {
         contentAlignment = Alignment.BottomEnd
     ) {
         CatList(itemList, isBottomLoading, isError, listState,
-            onFavClick = { shouldAdd, item, onFinish ->
+            onFavClick = { shouldAdd, item ->
                 if (shouldAdd) {
                     mainViewModel.startReviewFlow(context)
-                    favViewModel.addToFavourites(item, onFinish)
+                    favViewModel.addToFavourites(item)
                 } else {
-                    favViewModel.removeFromFavourites(item, onFinish)
+                    favViewModel.removeFromFavourites(item)
                 }
             },
             checkIsFavourite = { id -> favViewModel.checkInFavourites(id) },
+            checkIsEnabledCallback = { id -> !favViewModel.checkIsUpdating(id) && isFavouritesReady},
             getLikesCount = { id -> favViewModel.getLikesCount(id) },
             onErrorItemClicked = { feedViewModel.loadDataPageIfNeeded(checkErrorState = false) },
             onPostDeleteClick = { feedViewModel.deleteUserPost(it) },
-            isFavouritesReady = isFavouritesReady
         )
 
         // Trigger loading of more data when we reach the end of the list
@@ -174,10 +174,8 @@ fun FeedScreen() {
                         return@collectLatest
                     }
 
-                    val currentPage = index / feedViewModel.pageSize
-                    val currentPageLastIndex = (currentPage + 1) * feedViewModel.pageSize
-                    if (index == currentPageLastIndex - LOADING_OFFSET) {
-                        feedViewModel.loadDataPageIfNeeded(page = currentPage + 1)
+                    if (index == feedViewModel.items.lastIndex - LOADING_OFFSET) {
+                        feedViewModel.loadDataPageIfNeeded()
                     }
                 }
         }

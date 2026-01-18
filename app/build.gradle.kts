@@ -9,6 +9,13 @@ plugins {
     id ("kotlinx-serialization")
 }
 
+// Load API keys from secrets.properties
+val secretsPropertiesFile = rootProject.file("secrets.properties")
+val secretsProperties = Properties()
+if (secretsPropertiesFile.exists()) {
+    secretsProperties.load(FileInputStream(secretsPropertiesFile))
+}
+
 android {
     namespace = "com.mobdev.catgram"
     compileSdk = 35
@@ -21,6 +28,10 @@ android {
         versionName = "1.4"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+        // API keys from secrets.properties
+        buildConfigField("String", "IMGBB_API_KEY", "\"${secretsProperties["IMGBB_API_KEY"] ?: ""}\"")
+        buildConfigField("String", "CAT_API_KEY", "\"${secretsProperties["CAT_API_KEY"] ?: ""}\"")
     }
 
     signingConfigs {
@@ -57,6 +68,7 @@ android {
     }
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 }
 
