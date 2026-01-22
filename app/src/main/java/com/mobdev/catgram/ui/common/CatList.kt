@@ -118,7 +118,7 @@ fun CatList(
                     checkIsFavourite = checkIsFavourite,
                     checkIsEnabledCallback = checkIsEnabledCallback,
                     getLikesCount = getLikesCount,
-                    onPostDeleteCallback = { onPostDeleteClick?.invoke(item) }
+                    onPostDeleteCallback = onPostDeleteClick?.let { { it.invoke(item) } }
                 )
             }
         }
@@ -231,7 +231,7 @@ fun UserPostCard(
     onFavClick: FavClickCallback,
     checkIsFavourite: CheckIsFavCallback,
     getLikesCount: GetLikesCountCallback?,
-    onPostDeleteCallback: (() -> Unit)? = null,
+    onPostDeleteCallback: (() -> Unit)?,
     checkIsEnabledCallback: CheckIsEnabledCallback
 ) {
     val isActivated = checkIsFavourite(item.id)
@@ -334,7 +334,7 @@ fun UserPostCard(
                     )
                 }
             }
-            if (isMyPost) {
+            if (isMyPost && onPostDeleteCallback != null) {
                 IconButton(onClick = { showDeleteDialog = true }) {
                     Icon(
                         imageVector = Icons.Default.Close,

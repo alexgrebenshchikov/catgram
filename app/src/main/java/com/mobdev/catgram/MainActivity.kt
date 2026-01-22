@@ -1,6 +1,7 @@
 package com.mobdev.catgram
 
 import android.Manifest
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
@@ -8,6 +9,7 @@ import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.compose.runtime.MutableState
@@ -54,15 +56,13 @@ class MainActivity : ComponentActivity() {
     private val authProvider by lazy {
         (application as CatgramApplication).container.authProvider
     }
-    private val signInLauncher by lazy {
-        authProvider.createSignInLauncher(this, ::updateUiAfterSignIn)
-    }
-
+    private lateinit var signInLauncher: ActivityResultLauncher<Intent>
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         logger.d("${Firebase.auth.currentUser?.uid}")
         uiState.signedIn.value = authProvider.isSignedIn()
+        signInLauncher = authProvider.createSignInLauncher(this, ::updateUiAfterSignIn)
         mainViewModel.askForPostNotificationsPermissionIfNeeded(this, ::askNotificationPermission)
         scheduleOpenAppReminder(this.applicationContext)
         checkForUpdates()

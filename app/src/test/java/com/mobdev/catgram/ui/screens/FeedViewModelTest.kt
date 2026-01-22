@@ -144,7 +144,7 @@ class FeedViewModelTest {
 
     // ============ Helper Methods ============
 
-    private fun createViewModel(isSignedIn: Boolean = true): FeedViewModel {
+    private fun createViewModel(isSignedIn: Boolean = true, filterType: FeedViewModel.FilterType = FeedViewModel.FilterType.CATS_BY_BREED): FeedViewModel {
         every { authProvider.isSignedIn() } returns isSignedIn
 
         return FeedViewModel(
@@ -156,7 +156,7 @@ class FeedViewModelTest {
             dataStore = testDataStore,
             context = mockApplication,
             dispatcherProvider = testDispatcherProvider,
-            defaultFilterState = testDefaultFilterState,
+            defaultFilterState = testDefaultFilterState.copy(filterType = filterType),
         )
     }
 
@@ -398,11 +398,15 @@ class FeedViewModelTest {
 
         coEvery { userPostsRepository.deleteUserPost("post1") } just runs
 
-        viewModel.deleteUserPost(userPost.id)
+        var onSuccessCalled = false
+        viewModel.deleteUserPost(userPost.id) {
+            onSuccessCalled = true
+        }
         advanceUntilIdle()
 
         assertTrue(viewModel.items.isEmpty())
         assertNull(viewModel.snackbarMessage)
+        assertTrue(onSuccessCalled)
     }
 
     @Test
@@ -413,10 +417,14 @@ class FeedViewModelTest {
         val userPost = CatCardData.UserPost("post1", "user1", "url", "text", "name", null, null)
         coEvery { userPostsRepository.deleteUserPost("post1") } throws Exception("Delete failed")
 
-        viewModel.deleteUserPost(userPost.id)
+        var onSuccessCalled = false
+        viewModel.deleteUserPost(userPost.id) {
+            onSuccessCalled = true
+        }
         advanceUntilIdle()
 
         assertEquals("Failed to delete post", viewModel.snackbarMessage)
+        assertFalse(onSuccessCalled)
     }
 
     // ============ updateChoosedBreeds Tests ============
@@ -541,6 +549,17 @@ class FeedViewModelTest {
         advanceUntilIdle()
 
         assertEquals(FeedViewModel.FeedUiState.Error, viewModel.uiState)
+    }
+
+    @Test
+    fun `getBreedList network error ignored when filter type is users posts`() = runTest {
+        coEvery { catgramApiRepository.getBreedList() } throws RuntimeException("Network error")
+
+        val viewModel = createViewModel(filterType = FeedViewModel.FilterType.USERS_POSTS)
+        advanceUntilIdle()
+
+        assertEquals(FeedViewModel.FeedUiState.Ready, viewModel.uiState)
+        coVerify { userPostsRepository.getNextUserPostsDataPage(any(), any()) }
     }
 
     @Test

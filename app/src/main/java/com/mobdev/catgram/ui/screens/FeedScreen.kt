@@ -1,5 +1,6 @@
 package com.mobdev.catgram.ui.screens
 
+import android.content.res.Configuration
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -164,7 +165,11 @@ fun FeedScreen() {
             checkIsEnabledCallback = { id -> !favViewModel.checkIsUpdating(id) && isFavouritesReady },
             getLikesCount = { id -> favViewModel.getLikesCount(id) },
             onErrorItemClicked = { feedViewModel.loadDataPageIfNeeded(checkErrorState = false) },
-            onPostDeleteClick = { feedViewModel.deleteUserPost(it.id) },
+            onPostDeleteClick = {
+                feedViewModel.deleteUserPost(it.id) {
+                    favViewModel.refreshData()
+                }
+            },
             checkIsMyPostCallback = { userId -> feedViewModel.currentUser?.uid == userId },
         )
 
@@ -189,7 +194,7 @@ fun FeedScreen() {
             // Secondary action - Filter
             SmallFloatingActionButton(
                 onClick = {
-                    if (breedsLoaded) {
+                    if (!isTopLoading) {
                         filterChanged = false
                         bottomSheetOpened = true
                     }
@@ -298,7 +303,12 @@ fun FilterSheetContent(
     toBreedName: (String) -> String,
     onCheckedChange: (String, Boolean) -> Unit
 ) {
-    val maxHeight = LocalConfiguration.current.screenHeightDp - 168
+    val gap = if (LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE) {
+        0
+    } else {
+        168
+    }
+    val maxHeight = LocalConfiguration.current.screenHeightDp - gap
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -311,7 +321,9 @@ fun FilterSheetContent(
             style = MaterialTheme.typography.titleMedium,
             fontSize = 20.sp,
             textAlign = TextAlign.Center,
-            modifier = Modifier.padding(bottom = 16.dp).fillMaxWidth()
+            modifier = Modifier
+                .padding(bottom = 16.dp)
+                .fillMaxWidth()
         )
 
         // Radio option: Users posts
@@ -372,28 +384,39 @@ fun FilterSheetContent(
 
         // Breed checkboxes (under Cats by breed)
         AnimatedVisibility(visible = selectedFilterType == FeedViewModel.FilterType.CATS_BY_BREED) {
-            LazyColumn(
-                modifier = Modifier.padding(start = 32.dp)
-            ) {
-                items(checkedItems.keys.toList()) { item ->
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Checkbox(
-                            checked = checkedItems[item] ?: false,
-                            onCheckedChange = { isChecked ->
-                                onCheckedChange(item, isChecked)
-                            }
-                        )
-                        Text(
-                            text = toBreedName(item),
-                            style = MaterialTheme.typography.bodyMedium
-                        )
+            if (checkedItems.isNotEmpty()) {
+                LazyColumn(
+                    modifier = Modifier.padding(start = 32.dp)
+                ) {
+                    items(checkedItems.keys.toList()) { item ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Checkbox(
+                                checked = checkedItems[item] ?: false,
+                                onCheckedChange = { isChecked ->
+                                    onCheckedChange(item, isChecked)
+                                }
+                            )
+                            Text(
+                                text = toBreedName(item),
+                                style = MaterialTheme.typography.bodyMedium
+                            )
+                        }
                     }
                 }
+            } else {
+                Text(
+                    text = stringResource(R.string.breed_list_load_failed),
+                    style = MaterialTheme.typography.titleMedium,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 4.dp),
+                    textAlign = TextAlign.Center,
+                )
             }
         }
     }

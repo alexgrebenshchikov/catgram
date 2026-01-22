@@ -99,15 +99,14 @@ class MainViewModel : ViewModel() {
 
     fun startReviewFlow(context: Context) {
         if (!isReviewFlowWasStarted) {
-            logger.d( "start review flow")
             isReviewFlowWasStarted = true
-
             viewModelScope.launch {
                 val prefs = context.dataStore.data.first()
                 if (checkReviewWasShown(prefs)) {
                     return@launch
                 }
 
+                logger.d( "start review flow")
                 val reviewManager = RuStoreReviewManagerFactory.create(context)
                 reviewManager.requestReviewFlow()
                     .addOnSuccessListener { reviewInfo ->

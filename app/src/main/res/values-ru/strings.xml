@@ -43,4 +43,5 @@
     <string name="snackbar_load_data_failed">Не удалось загрузить данные</string>
     <string name="snackbar_check_date_time">Ошибка соединения. Проверьте настройки даты и времени на устройстве.</string>
     <string name="sign_in_with_google_account">Войти с помощью Google аккаунта</string>
+    <string name="breed_list_load_failed">Не удалось загрузить список пород. Проверьте подключение к сети и закройте шторку, чтобы попытаться загрузить его снова</string>
 </resources>

@@ -122,20 +122,34 @@ class FeedViewModel(
                     val (result, filterType, showOnlyMyPostsEnabled, breedInfoList) = withContext(
                         dispatcherProvider.io
                     ) {
-                        val breedInfoList = catgramApiRepository.getBreedList()
-                        val breeds = breedInfoList.map { it.id }
                         val prefs = dataStore.data.first()
-                        val breedsFromStore = getBreedsFromStore(prefs)
-                        val breedsResult = breeds.associateWith { false }.let {
-                            it.plus(breedsFromStore.filter { entry -> breeds.contains(entry.key) && entry.value })
+                        val filterType = getFilterTypeFromStore(prefs)
+                        val showOnlyMyPosts = getShowOnlyMyPostsFromStore(prefs)
+                        try {
+                            val breedInfoList = catgramApiRepository.getBreedList()
+                            val breeds = breedInfoList.map { it.id }
+                            val breedsFromStore = getBreedsFromStore(prefs)
+                            val breedsResult = breeds.associateWith { false }.let {
+                                it.plus(breedsFromStore.filter { entry -> breeds.contains(entry.key) && entry.value })
+                            }
+                            updateBreedsDataStore(breedsResult)
+                            FilterStateData(
+                                breedsResult,
+                                filterType,
+                                showOnlyMyPosts,
+                                breedInfoList
+                            )
+                        } catch (e: Throwable) {
+                            when(filterType) {
+                                FilterType.USERS_POSTS -> FilterStateData(
+                                    mapOf(),
+                                    filterType,
+                                    showOnlyMyPosts,
+                                    listOf()
+                                )
+                                FilterType.CATS_BY_BREED -> throw e
+                            }
                         }
-                        updateBreedsDataStore(breedsResult)
-                        FilterStateData(
-                            breedsResult,
-                            getFilterTypeFromStore(prefs),
-                            getShowOnlyMyPostsFromStore(prefs),
-                            breedInfoList
-                        )
                     }
 
                     selectedFilterType = filterType
@@ -244,13 +258,14 @@ class FeedViewModel(
         snackbarMessage = null
     }
 
-    fun deleteUserPost(postId: String) {
+    fun deleteUserPost(postId: String, onSuccess: () -> Unit) {
         viewModelScope.launch(dispatcherProvider.mainImmediate) {
             try {
                 withContext(dispatcherProvider.io) {
                     userPostsRepository.deleteUserPost(postId)
                 }
                 items = items.filter { it.id != postId }
+                onSuccess()
                 logger.d("post delete success")
             } catch (e: Throwable) {
                 snackbarMessage = context.getString(R.string.snackbar_post_delete_failed)
@@ -279,7 +294,8 @@ class FeedViewModel(
         }
     }
 
-    private fun isFilterStateLoaded() = choosedBreeds.isNotEmpty()
+    private fun isFilterStateLoaded() = choosedBreeds.isNotEmpty() ||
+            selectedFilterType == FilterType.USERS_POSTS
 
     private fun partialReset() {
         uiState = FeedUiState.Ready
