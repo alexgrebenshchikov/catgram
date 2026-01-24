@@ -14,6 +14,10 @@
     <string name="reminder_notification_text">Пора посмотреть на котиков!</string>
     <string name="downloading_completed">Загрузка обновления завершена.</string>
     <string name="button_install">Установить</string>
+    <string name="update_downloading">Загрузка обновления…</string>
+    <string name="update_ready_to_install">Обновление готово к установке</string>
+    <string name="update_failed">Не удалось загрузить обновление</string>
+    <string name="dismiss">Закрыть</string>
     <string name="create_new_post">Создать пост</string>
     <string name="filter_title">Фильтр</string>
     <string name="filter_users_posts">Посты пользователей</string>

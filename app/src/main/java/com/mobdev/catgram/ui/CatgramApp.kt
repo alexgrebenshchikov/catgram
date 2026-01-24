@@ -14,9 +14,6 @@ import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SnackbarHost
-import androidx.compose.material3.SnackbarHostState
-import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -26,16 +23,19 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.Saver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.mobdev.catgram.Event
 import com.mobdev.catgram.MainActivity
 import com.mobdev.catgram.MainViewModel
 import com.mobdev.catgram.R
-import com.mobdev.catgram.logging.logger
 import com.mobdev.catgram.ui.BottomNavScreen.Companion.FAVOURITES_SCREEN_ID
 import com.mobdev.catgram.ui.BottomNavScreen.Companion.FEED_SCREEN_ID
 import com.mobdev.catgram.ui.BottomNavScreen.Companion.PROFILE_SCREEN_ID
+import com.mobdev.catgram.ui.common.UpdateStatus
+import com.mobdev.catgram.ui.common.UpdateStatusBanner
 import com.mobdev.catgram.ui.screens.FavouritesScreen
 import com.mobdev.catgram.ui.screens.FavouritesViewModel
 import com.mobdev.catgram.ui.screens.FeedScreen
@@ -91,10 +91,19 @@ fun CatgramApp(
     val feedViewModel: FeedViewModel = viewModel(factory = FeedViewModel.factory)
     val mainViewModel: MainViewModel = viewModel()
 
-    val snackBarHostState = remember { SnackbarHostState() }
+    var updateStatus by remember { mutableStateOf<UpdateStatus?>(null) }
+
+    LaunchedEffect(Unit) {
+        mainViewModel.events.collect { event ->
+            updateStatus = when (event) {
+                is Event.DownloadProgress -> UpdateStatus.Downloading(event.percent)
+                is Event.UpdateDownloaded -> UpdateStatus.ReadyToInstall
+                is Event.UpdateFailed -> UpdateStatus.Failed
+            }
+        }
+    }
 
     Scaffold(
-        snackbarHost = { SnackbarHost(hostState = snackBarHostState) },
         bottomBar = {
             if (signedIn) {
                 BottomNavigationBar(
@@ -115,53 +124,39 @@ fun CatgramApp(
                     uiState = uiState,
                     onGoogleSignInClick = onSignInClick
                 )
-                return@Box
-            }
-
-            when (selectedScreen) {
-                is BottomNavScreen.Feed -> FeedScreen()
-                is BottomNavScreen.Favourites -> FavouritesScreen()
-                is BottomNavScreen.Profile -> {
-                    val userInfo = getUserInfoCallback()
-                    ProfileScreen(
-                        userInfo.avatarUrl,
-                        userInfo.displayName ?: stringResource(R.string.unknown_user_name),
-                        userInfo.email ?: stringResource(
-                            R.string.unknown_email
-                        )
-                    ) {
-                        feedViewModel.reset()
-                        favViewModel.reset()
-                        onSignOutClick()
-                        uiState.signedIn.value = false
-                        selectedScreen = BottomNavScreen.Feed
+            } else {
+                when (selectedScreen) {
+                    is BottomNavScreen.Feed -> FeedScreen()
+                    is BottomNavScreen.Favourites -> FavouritesScreen()
+                    is BottomNavScreen.Profile -> {
+                        val userInfo = getUserInfoCallback()
+                        ProfileScreen(
+                            userInfo.avatarUrl,
+                            userInfo.displayName ?: stringResource(R.string.unknown_user_name),
+                            userInfo.email ?: stringResource(R.string.unknown_email)
+                        ) {
+                            feedViewModel.reset()
+                            favViewModel.reset()
+                            onSignOutClick()
+                            uiState.signedIn.value = false
+                            selectedScreen = BottomNavScreen.Feed
+                        }
                     }
                 }
             }
-        }
 
-        val snackBarText = stringResource(R.string.downloading_completed)
-        val installButtonText = stringResource(R.string.button_install)
-
-        LaunchedEffect(uiState.needToShowSnackbar.value) {
-            if (uiState.needToShowSnackbar.value) {
-                snackBarHostState.showSnackbar(
-                    message = snackBarText,
-                    withDismissAction = true,
-                    actionLabel = installButtonText,
-                ).let { snackbarResult ->
-                    when (snackbarResult) {
-                        SnackbarResult.Dismissed -> {
-                            logger.d("install dismissed")
-                        }
-
-                        SnackbarResult.ActionPerformed -> {
-                            logger.d("install acquired")
-                            mainViewModel.completeUpdateRequested()
-                        }
-                    }
-                    uiState.needToShowSnackbar.value = false
-                }
+            updateStatus?.let { status ->
+                UpdateStatusBanner(
+                    status = status,
+                    onInstallClick = {
+                        mainViewModel.completeUpdateRequested()
+                        updateStatus = null
+                    },
+                    onDismiss = {
+                        updateStatus = null
+                    },
+                    modifier = Modifier.align(Alignment.BottomCenter)
+                )
             }
         }
     }

@@ -15,8 +15,6 @@ import androidx.activity.viewModels
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.mutableStateOf
 import androidx.core.content.ContextCompat
-import androidx.lifecycle.flowWithLifecycle
-import androidx.lifecycle.lifecycleScope
 import com.google.android.gms.tasks.OnCompleteListener
 import com.google.firebase.auth.ktx.auth
 import com.google.firebase.ktx.Firebase
@@ -29,7 +27,6 @@ import com.mobdev.catgram.ui.screens.FavouritesViewModel
 import com.mobdev.catgram.ui.screens.FeedViewModel
 import com.mobdev.catgram.ui.theme.CatgramTheme
 import com.mobdev.catgram.worker.scheduleOpenAppReminder
-import kotlinx.coroutines.launch
 
 
 class MainActivity : ComponentActivity() {
@@ -135,26 +132,10 @@ class MainActivity : ComponentActivity() {
 
     private fun checkForUpdates() {
         mainViewModel.startCheckForUpdates(this)
-
-        lifecycleScope.launch {
-            mainViewModel.events
-                .flowWithLifecycle(lifecycle)
-                .collect { event ->
-                    when (event) {
-                        Event.UpdateCompleted -> showDialogForCompleteUpdate()
-                    }
-                }
-        }
-    }
-
-    private fun showDialogForCompleteUpdate() {
-        logger.d("update completed")
-        uiState.needToShowSnackbar.value = true
     }
 
     data class UiState(
         var signedIn: MutableState<Boolean> = mutableStateOf(false),
-        var signInInProgress: MutableState<Boolean> = mutableStateOf(false),
-        var needToShowSnackbar: MutableState<Boolean> = mutableStateOf(false)
+        var signInInProgress: MutableState<Boolean> = mutableStateOf(false)
     )
 }

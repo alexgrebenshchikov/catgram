@@ -10,8 +10,7 @@ import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.label.ImageLabeling
 import com.google.mlkit.vision.label.defaults.ImageLabelerOptions
 import com.mobdev.catgram.logging.logger
-import kotlin.coroutines.resume
-import kotlin.coroutines.suspendCoroutine
+import kotlinx.coroutines.tasks.await
 
 class CatDetector {
     
@@ -19,36 +18,25 @@ class CatDetector {
     private val confidenceThreshold = 0.5f
     
     suspend fun isCatImage(context: Context, imageUri: Uri): Result<Boolean> {
-        return suspendCoroutine { continuation ->
-            try {
-                val bitmap = uriToBitmap(context, imageUri)
-                if (bitmap == null) {
-                    continuation.resume(Result.failure(Exception("Failed to load image")))
-                    return@suspendCoroutine
-                }
-                
-                val image = InputImage.fromBitmap(bitmap, 0)
-                val labeler = ImageLabeling.getClient(ImageLabelerOptions.DEFAULT_OPTIONS)
-                
-                labeler.process(image)
-                    .addOnSuccessListener { labels ->
-                        logger.d( "Image labels: ${labels.map { "${it.text}: ${it.confidence}" }}")
-                        
-                        val isCat = labels.any { label ->
-                            label.text.lowercase() in catLabels && label.confidence >= confidenceThreshold
-                        }
-                        
-                        logger.d( "Is cat image: $isCat")
-                        continuation.resume(Result.success(isCat))
-                    }
-                    .addOnFailureListener { e ->
-                        logger.e( "Image labeling failed: ${e.message}", e)
-                        continuation.resume(Result.failure(e))
-                    }
-            } catch (e: Exception) {
-                logger.e( "Cat detection error: ${e.message}", e)
-                continuation.resume(Result.failure(e))
+        return try {
+            val bitmap = uriToBitmap(context, imageUri)
+                ?: return Result.failure(Throwable("Failed to load image"))
+            
+            val image = InputImage.fromBitmap(bitmap, 0)
+            val labeler = ImageLabeling.getClient(ImageLabelerOptions.DEFAULT_OPTIONS)
+            
+            val labels = labeler.process(image).await()
+            logger.d("Image labels: ${labels.map { "${it.text}: ${it.confidence}" }}")
+            
+            val isCat = labels.any { label ->
+                label.text.lowercase() in catLabels && label.confidence >= confidenceThreshold
             }
+            
+            logger.d("Is cat image: $isCat")
+            Result.success(isCat)
+        } catch (e: Throwable) {
+            logger.e("Cat detection error: ${e.message}", e)
+            Result.failure(e)
         }
     }
     
@@ -63,7 +51,7 @@ class CatDetector {
                 @Suppress("DEPRECATION")
                 MediaStore.Images.Media.getBitmap(context.contentResolver, uri)
             }
-        } catch (e: Exception) {
+        } catch (e: Throwable) {
             logger.e( "Failed to decode bitmap: ${e.message}", e)
             null
         }
