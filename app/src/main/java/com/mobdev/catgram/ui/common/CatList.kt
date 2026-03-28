@@ -2,6 +2,8 @@ package com.mobdev.catgram.ui.common
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.VectorConverter
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
@@ -9,6 +11,10 @@ import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.calculatePan
+import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -39,9 +45,11 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -52,6 +60,9 @@ import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.positionChanged
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
@@ -62,6 +73,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.zIndex
 import coil.compose.SubcomposeAsyncImage
 import coil.compose.SubcomposeAsyncImageContent
 import coil.request.ImageRequest
@@ -71,6 +83,7 @@ import com.mobdev.catgram.network.BreedInfo
 import com.mobdev.catgram.ui.theme.CatgramTheme
 import com.mobdev.catgram.ui.theme.StarYellow
 import com.mobdev.catgram.utils.getNameAndDescription
+import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Locale
 
@@ -180,37 +193,10 @@ fun CatsApiCard(
             .padding(vertical = 8.dp),
         elevation = CardDefaults.cardElevation(4.dp)
     ) {
-        SubcomposeAsyncImage(
-            model = ImageRequest.Builder(context = LocalContext.current)
-                .data(item.url)
-                .build(),
+        ZoomableImage(
+            imageUrl = item.url,
             contentDescription = stringResource(R.string.cats_card),
-            contentScale = ContentScale.FillWidth,
-            modifier = Modifier.fillMaxWidth(),
-            loading = {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .aspectRatio(1f)
-                        .shimmerEffect()
-                )
-            },
-            error = {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .aspectRatio(1f),
-                    contentAlignment = Alignment.Center
-                ) {
-                    androidx.compose.foundation.Image(
-                        painter = painterResource(R.drawable.ic_broken_image),
-                        contentDescription = "Error"
-                    )
-                }
-            },
-            success = {
-                SubcomposeAsyncImageContent()
-            }
+            modifier = Modifier.fillMaxWidth()
         )
         item.breeds.getNameAndDescription()?.let {
             ExpandableHeadingWithDetail(it.first, it.second)
@@ -345,38 +331,11 @@ fun UserPostCard(
             }
         }
 
-        // Post image
-        SubcomposeAsyncImage(
-            model = ImageRequest.Builder(context = LocalContext.current)
-                .data(item.url)
-                .build(),
+        // Post image with pinch-to-zoom
+        ZoomableImage(
+            imageUrl = item.url,
             contentDescription = stringResource(R.string.cats_card),
-            contentScale = ContentScale.FillWidth,
-            modifier = Modifier.fillMaxWidth(),
-            loading = {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .aspectRatio(1f)
-                        .shimmerEffect()
-                )
-            },
-            error = {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .aspectRatio(1f),
-                    contentAlignment = Alignment.Center
-                ) {
-                    androidx.compose.foundation.Image(
-                        painter = painterResource(R.drawable.ic_broken_image),
-                        contentDescription = "Error"
-                    )
-                }
-            },
-            success = {
-                SubcomposeAsyncImageContent()
-            }
+            modifier = Modifier.fillMaxWidth()
         )
 
         // Post text
@@ -486,6 +445,110 @@ fun FavouritesButton(
                 modifier = Modifier.wrapContentSize()
             )
         }
+    }
+}
+
+@Composable
+fun ZoomableImage(
+    imageUrl: String,
+    contentDescription: String,
+    modifier: Modifier = Modifier
+) {
+    val scope = rememberCoroutineScope()
+    val scale = remember { Animatable(1f) }
+    val offset = remember { Animatable(Offset.Zero, Offset.VectorConverter) }
+    var isZooming by remember { mutableStateOf(false) }
+
+    // Reset to original when gesture ends
+    LaunchedEffect(isZooming) {
+        if (!isZooming && (scale.value != 1f || offset.value != Offset.Zero)) {
+            launch { scale.animateTo(1f, animationSpec = tween(300)) }
+            launch { offset.animateTo(Offset.Zero, animationSpec = tween(300)) }
+        }
+    }
+
+    // Elevate z-index when zoomed so image appears above other card content
+    val isElevated = scale.value > 1f
+
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .zIndex(if (isElevated) 1f else 0f)
+            .pointerInput(Unit) {
+                awaitEachGesture {
+                    // Wait for first finger down
+                    awaitFirstDown(requireUnconsumed = false)
+                    
+                    do {
+                        val event = awaitPointerEvent()
+                        val pointerCount = event.changes.count { it.pressed }
+                        
+                        // Only handle pinch gesture (2+ fingers)
+                        if (pointerCount >= 2) {
+                            isZooming = true
+                            val zoomChange = event.calculateZoom()
+                            val panChange = event.calculatePan()
+                            
+                            scope.launch {
+                                scale.snapTo((scale.value * zoomChange).coerceIn(1f, 4f))
+                                if (scale.value > 1f) {
+                                    offset.snapTo(offset.value + panChange)
+                                }
+                            }
+                            
+                            // Consume the event to prevent scrolling during pinch
+                            event.changes.forEach { 
+                                if (it.positionChanged()) {
+                                    it.consume() 
+                                }
+                            }
+                        }
+                    } while (event.changes.any { it.pressed })
+                    
+                    // Gesture ended
+                    isZooming = false
+                }
+            }
+    ) {
+        SubcomposeAsyncImage(
+            model = ImageRequest.Builder(context = LocalContext.current)
+                .data(imageUrl)
+                .build(),
+            contentDescription = contentDescription,
+            contentScale = ContentScale.FillWidth,
+            modifier = Modifier
+                .fillMaxWidth()
+                .graphicsLayer(
+                    scaleX = scale.value,
+                    scaleY = scale.value,
+                    translationX = offset.value.x,
+                    translationY = offset.value.y
+                ),
+            loading = {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .aspectRatio(1f)
+                        .shimmerEffect()
+                )
+            },
+            error = {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .aspectRatio(1f),
+                    contentAlignment = Alignment.Center
+                ) {
+                    androidx.compose.foundation.Image(
+                        painter = painterResource(R.drawable.ic_broken_image),
+                        contentDescription = "Error"
+                    )
+                }
+            },
+            success = {
+                SubcomposeAsyncImageContent()
+            }
+        )
     }
 }
 

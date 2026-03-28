@@ -26,6 +26,7 @@ import com.mobdev.catgram.ui.UserInfo
 import com.mobdev.catgram.ui.screens.FavouritesViewModel
 import com.mobdev.catgram.ui.screens.FeedViewModel
 import com.mobdev.catgram.ui.theme.CatgramTheme
+import com.mobdev.catgram.worker.scheduleNewPostsNotificationWorker
 import com.mobdev.catgram.worker.scheduleOpenAppReminder
 
 
@@ -62,6 +63,7 @@ class MainActivity : ComponentActivity() {
         signInLauncher = authProvider.createSignInLauncher(this, ::updateUiAfterSignIn)
         mainViewModel.askForPostNotificationsPermissionIfNeeded(this, ::askNotificationPermission)
         scheduleOpenAppReminder(this.applicationContext)
+        scheduleNewPostsNotificationWorker(this.applicationContext)
         checkForUpdates()
         enableEdgeToEdge()
         setContent {

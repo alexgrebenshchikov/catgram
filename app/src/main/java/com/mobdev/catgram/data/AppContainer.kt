@@ -54,7 +54,7 @@ class DefaultAppContainer(private val context: Context) : AppContainer {
         //MockCatgramApiRepository()
     }
     override val userPostsRepository: UserPostsRepository by lazy {
-        FirebaseUserPostsRepository(authProvider)
+        FirebaseUserPostsRepository(authProvider, context)
     }
     override val favouritesRepository: FavouritesRepository by lazy {
         FirebaseFavouritesRepository(authProvider)

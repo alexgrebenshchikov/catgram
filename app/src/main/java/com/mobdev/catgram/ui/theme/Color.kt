@@ -14,7 +14,7 @@ val Orange900 = Color(0xFFFF6F00)
 
 // Base Colors
 val BaseYellow = Color(0xFFFFC067)
-val BaseLightBlue = Color(0xFFB2F1FF)
+val BaseLightBlue = Color(0xFFBFF1FF)
 val BaseMediumBlue = Color(0xFFA2ABEE)
 val BaseDarkNeutral = Color(0xFF7D99AA)
 val BaseLightBlueDark = Color(0xFF1CADD2)

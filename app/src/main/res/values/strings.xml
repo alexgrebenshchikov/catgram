@@ -49,4 +49,6 @@
     <string name="snackbar_check_date_time">Connection failed. Please check your device date and time settings.</string>
     <string name="sign_in_with_google_account">Sign in with Google Account</string>
     <string name="breed_list_load_failed">Failed to load breed list. Please, check your network connection and close bottom sheet to try to load it again</string>
+    <string name="new_posts_notification_title">New cat posts!</string>
+    <string name="new_posts_notification_text">Check out new posts from the community</string>
 </resources>

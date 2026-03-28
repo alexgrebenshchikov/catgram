@@ -1,7 +1,6 @@
 package com.mobdev.catgram.data
 
 import android.content.Context
-import com.google.android.gms.auth.api.signin.GoogleSignIn
 import com.google.firebase.Timestamp
 import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FieldValue
@@ -12,6 +11,7 @@ import com.google.firebase.ktx.Firebase
 import com.mobdev.catgram.auth.AuthProvider
 import com.mobdev.catgram.logging.logger
 import com.mobdev.catgram.network.CatsData.CatsUserPostData
+import com.mobdev.catgram.worker.NewPostsPreferences
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
@@ -24,11 +24,13 @@ interface UserPostsRepository {
 
     suspend fun addUserPost(url: String, text: String, context: Context)
     suspend fun deleteUserPost(postId: String)
+    suspend fun hasNewPostsSince(timestampMillis: Long): Boolean
     fun reset()
 }
 
 class FirebaseUserPostsRepository(
-    private val authProvider: AuthProvider
+    private val authProvider: AuthProvider,
+    private val context: Context
 ) : UserPostsRepository {
     private val firestore = Firebase.firestore
     private val userPostsColRef = firestore.collection(USER_POSTS_COL)
@@ -69,6 +71,17 @@ class FirebaseUserPostsRepository(
         lastFetchedPost = null
     }
 
+    override suspend fun hasNewPostsSince(timestampMillis: Long): Boolean {
+        val firestoreTimestamp = Timestamp(java.util.Date(timestampMillis))
+        val snapshot = userPostsColRef
+            .orderBy(CREATED_AT, Query.Direction.DESCENDING)
+            .whereGreaterThan(CREATED_AT, firestoreTimestamp)
+            .limit(1)
+            .get()
+            .await()
+        return !snapshot.isEmpty
+    }
+
     private suspend fun getFirstPage(
         pageSize: Long,
         showOnlyMyPosts: Boolean
@@ -86,6 +99,11 @@ class FirebaseUserPostsRepository(
             .limit(pageSize)
             .get()
             .await()
+
+        NewPostsPreferences.setLastCheckedTimestamp(
+            context,
+            System.currentTimeMillis()
+        )
 
         return withContext(Dispatchers.Main) {
             lastFetchedPost = snapshot.documents.lastOrNull()
