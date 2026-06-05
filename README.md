@@ -1,20 +1,52 @@
-# Catgram
+# Catgram 🐱
 
-### Описание проекта
-Приложение, которое позволяет находить и просматривать фото котов, добавлять их в избранное. Также есть возможность просматривать кол-во лайков и информацию о породе котов.
+Catgram is a pet Android project: a small social feed app for cat lovers.  
+Users can browse cat photos, create posts, and publish only cat-related images.
 
-### Дизайн
-Фигма: https://www.figma.com/design/vQCAuuQ3w83Dg7inPXCwe0/Catgram?t=Tl1Mk17f3l0DLGPc-0
+The project was built to practice modern Android development, external API integration, and AI-based image validation.
 
-### User stories
-1. Как новый пользователь я хочу иметь возможность использовать свой гугл аккаунт для регистрации и доступа к контенту приложения.
-2. Как пользователь я хочу иметь возможность оставаться залогиненым чтобы каждый раз при открытии приложения не вводить свли учетные данные.
-3. Как пользователь я хочу искать фотографии котов определенных пород чтобы найти тот контент который мне интересен.
-4. Как пользователь я хочу увидеть информацию о породах чтобы узнать о них больше.
-5. Как пользователь я хочу сохранять понравившиеся фотографии в избранное чтобы потом легко их найти.
-6. Как пользователь я хочу иметь сихронизацию избранного между моими устройствами чтобы я мог пользоваться приложением более удобно.
-7. Как пользователь я хочу видеть лайки других пользователей, чтобы узнавать, что понравилось другим людям.
-8. Как пользователь я хочу иметь понятный, интуитивный и неперегруженный интерфейс, хочу чтобы разные логические части были отделены друг от друга, чтобы было удобнее пользоватеься приложением, чтобы не терялся фокус
+📱 Published in RuStore: [Catgram on RuStore](https://www.rustore.ru/catalog/app/com.mobdev.catgram)
+
+---
+
+## Overview
+
+Catgram focuses on a simple idea: a social feed where every post must contain a cat.
+
+To keep the content relevant, the app uses AI-based image validation. When a user creates a post, the selected image is checked before publishing. If the image does not contain a cat, the post is rejected.
+
+---
+
+## Features
+
+- Cat photo feed
+- Post creation flow
+- External Cats API integration
+- AI-based cat image validation
+- Jetpack Compose UI
+- Kotlin-based Android implementation
+
+---
+
+## Tech Stack
+
+- **Kotlin**
+- **Android SDK**
+- **Jetpack Compose**
+- **Coroutines**
+- **REST API**
+- **Firebase**
+- **AI image filtering**
+
+## Screenshots
+
+<p align="center">
+  <img width="250" alt="Feed screen" src="https://github.com/user-attachments/assets/615eddd1-e8d1-4efc-9e5c-95fe31834eea" />
+  <img width="250" alt="Create post screen" src="https://github.com/user-attachments/assets/56191c3e-f9a5-41ca-92df-67743e0567f7" />
+  <img width="250" alt="Filter screen" src="https://github.com/user-attachments/assets/73ae4fcf-89f0-454b-b6ae-7d5062edb203" />
+</p>
+
+---
 
 
 
