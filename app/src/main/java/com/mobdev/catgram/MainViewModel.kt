@@ -27,7 +27,7 @@ import ru.rustore.sdk.review.RuStoreReviewManagerFactory
 import java.util.concurrent.TimeUnit
 
 class MainViewModel : ViewModel() {
-    private lateinit var ruStoreAppUpdateManager: RuStoreAppUpdateManager
+    private var ruStoreAppUpdateManager: RuStoreAppUpdateManager? = null
 
     private val _events = MutableSharedFlow<Event>(
         extraBufferCapacity = 1,
@@ -62,7 +62,7 @@ class MainViewModel : ViewModel() {
 
     override fun onCleared() {
         super.onCleared()
-        ruStoreAppUpdateManager.unregisterListener(installStateUpdateListener)
+        ruStoreAppUpdateManager?.unregisterListener(installStateUpdateListener)
     }
 
     fun startCheckForUpdates(context: Context) {
@@ -70,15 +70,16 @@ class MainViewModel : ViewModel() {
             logger.d("startCheckForUpdates")
             isUpdatesCheckWasLaunched = true
 
-            ruStoreAppUpdateManager = RuStoreAppUpdateManagerFactory.create(context)
-            ruStoreAppUpdateManager
+            val updateManager = RuStoreAppUpdateManagerFactory.create(context)
+            ruStoreAppUpdateManager = updateManager
+            updateManager
                 .getAppUpdateInfo()
                 .addOnSuccessListener { appUpdateInfo ->
                     logger.d("getAppUpdateInfo success")
                     if (appUpdateInfo.updateAvailability == UpdateAvailability.UPDATE_AVAILABLE) {
                         logger.d("update available ${appUpdateInfo.availableVersionCode}")
-                        ruStoreAppUpdateManager.registerListener(installStateUpdateListener)
-                        ruStoreAppUpdateManager
+                        updateManager.registerListener(installStateUpdateListener)
+                        updateManager
                             .startUpdateFlow(appUpdateInfo, AppUpdateOptions.Builder().build())
                             .addOnSuccessListener { resultCode ->
                                 if (resultCode == Activity.RESULT_CANCELED) {
@@ -101,7 +102,7 @@ class MainViewModel : ViewModel() {
     }
 
     fun completeUpdateRequested() {
-        ruStoreAppUpdateManager.completeUpdate()
+        ruStoreAppUpdateManager?.completeUpdate()
     }
 
     fun startReviewFlow(context: Context) {
@@ -112,7 +113,13 @@ class MainViewModel : ViewModel() {
                 withContext(Dispatchers.IO) {
                     try {
                         val prefs = context.dataStore.data.first()
-                        if (checkReviewWasShown(prefs)) {
+                        if (checkReviewWasShown(prefs) || !checkShowReviewDelayMet(
+                                prefs,
+                                context,
+                                System.currentTimeMillis(),
+                            )
+                        ) {
+                            isReviewFlowWasStarted = false
                             return@withContext
                         }
 
@@ -123,6 +130,7 @@ class MainViewModel : ViewModel() {
                         reviewManager.launchReviewFlow(reviewInfo).await()
                         setReviewWasShown(context)
                     } catch (e: Throwable) {
+                        isReviewFlowWasStarted = false
                         logger.e("review failure: ${e.message}", e)
                     }
                 }

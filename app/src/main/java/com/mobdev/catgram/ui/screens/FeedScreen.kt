@@ -108,8 +108,7 @@ fun FeedScreen() {
     var filterChanged by rememberSaveable { mutableStateOf(false) }
     val selectedFilterType = feedViewModel.selectedFilterType
     val showOnlyMyPosts = feedViewModel.showOnlyMyPosts
-    val breedsLoaded = feedViewModel.choosedBreeds.isNotEmpty()
-    val isFavouritesReady = favViewModel.items != null && !favViewModel.isLoading
+    val isFavouritesReady = favViewModel.isReady
 
     // Create Post sheet state
     val createPostSheetState = rememberModalBottomSheetState(
@@ -161,7 +160,7 @@ fun FeedScreen() {
                     favViewModel.removeFromFavourites(item)
                 }
             },
-            checkIsFavourite = { id -> favViewModel.checkInFavourites(id) },
+            checkIsFavourite = { item -> favViewModel.checkInFavourites(item) },
             checkIsEnabledCallback = { id -> !favViewModel.checkIsUpdating(id) && isFavouritesReady },
             getLikesCount = { id -> favViewModel.getLikesCount(id) },
             onErrorItemClicked = { feedViewModel.loadDataPageIfNeeded(checkErrorState = false) },
@@ -254,11 +253,13 @@ fun FeedScreen() {
                         feedViewModel.updateShowOnlyMyPosts(it)
                     },
                     checkedItems = feedViewModel.choosedBreeds,
+                    breedUiState = feedViewModel.breedUiState,
                     toBreedName = { feedViewModel.toBreedName(it) },
                     onCheckedChange = { item, isChecked ->
                         filterChanged = true
                         feedViewModel.updateChoosedBreeds(item, isChecked)
-                    }
+                    },
+                    onRetryBreedList = feedViewModel::retryBreedList,
                 )
             }
         }
@@ -300,8 +301,10 @@ fun FilterSheetContent(
     showOnlyMyPosts: Boolean,
     onShowOnlyMyPostsChange: (Boolean) -> Unit,
     checkedItems: Map<String, Boolean>,
+    breedUiState: FeedViewModel.BreedUiState,
     toBreedName: (String) -> String,
-    onCheckedChange: (String, Boolean) -> Unit
+    onCheckedChange: (String, Boolean) -> Unit,
+    onRetryBreedList: () -> Unit,
 ) {
     val gap = if (LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE) {
         0
@@ -384,40 +387,116 @@ fun FilterSheetContent(
 
         // Breed checkboxes (under Cats by breed)
         AnimatedVisibility(visible = selectedFilterType == FeedViewModel.FilterType.CATS_BY_BREED) {
-            if (checkedItems.isNotEmpty()) {
-                LazyColumn(
-                    modifier = Modifier.padding(start = 32.dp)
-                ) {
-                    items(checkedItems.keys.toList()) { item ->
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(vertical = 4.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Checkbox(
-                                checked = checkedItems[item] ?: false,
-                                onCheckedChange = { isChecked ->
-                                    onCheckedChange(item, isChecked)
-                                }
-                            )
-                            Text(
-                                text = toBreedName(item),
-                                style = MaterialTheme.typography.bodyMedium
-                            )
+            val hasUsableBreedData = checkedItems.isNotEmpty() && when (breedUiState) {
+                FeedViewModel.BreedUiState.Ready -> true
+                is FeedViewModel.BreedUiState.Loading -> breedUiState.hasCachedData
+                is FeedViewModel.BreedUiState.Error -> breedUiState.hasCachedData
+            }
+
+            Column(modifier = Modifier.fillMaxWidth()) {
+                when (breedUiState) {
+                    is FeedViewModel.BreedUiState.Loading -> {
+                        if (!hasUsableBreedData) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 16.dp),
+                                horizontalArrangement = androidx.compose.foundation.layout.Arrangement.Center,
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                CircularProgressIndicator(modifier = Modifier.size(24.dp))
+                                Text(
+                                    text = stringResource(R.string.breed_list_loading),
+                                    modifier = Modifier.padding(start = 12.dp),
+                                    style = MaterialTheme.typography.bodyMedium,
+                                )
+                            }
                         }
                     }
+                    is FeedViewModel.BreedUiState.Error -> BreedListError(
+                        error = breedUiState,
+                        onRetry = onRetryBreedList,
+                    )
+                    FeedViewModel.BreedUiState.Ready -> Unit
                 }
-            } else {
-                Text(
-                    text = stringResource(R.string.breed_list_load_failed),
-                    style = MaterialTheme.typography.titleMedium,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 4.dp),
-                    textAlign = TextAlign.Center,
-                )
+
+                if (hasUsableBreedData) {
+                    LazyColumn(
+                        modifier = Modifier.padding(start = 32.dp)
+                    ) {
+                        items(checkedItems.keys.toList()) { item ->
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Checkbox(
+                                    checked = checkedItems[item] ?: false,
+                                    onCheckedChange = { isChecked ->
+                                        onCheckedChange(item, isChecked)
+                                    }
+                                )
+                                Text(
+                                    text = toBreedName(item),
+                                    style = MaterialTheme.typography.bodyMedium
+                                )
+                            }
+                        }
+                    }
+                } else if (breedUiState == FeedViewModel.BreedUiState.Ready) {
+                    BreedListError(
+                        error = FeedViewModel.BreedUiState.Error(
+                            reason = FeedViewModel.BreedLoadError.RESPONSE,
+                            hasCachedData = false,
+                        ),
+                        onRetry = onRetryBreedList,
+                    )
+                }
             }
+        }
+    }
+}
+
+@Composable
+private fun BreedListError(
+    error: FeedViewModel.BreedUiState.Error,
+    onRetry: () -> Unit,
+) {
+    val message = when (error.reason) {
+        FeedViewModel.BreedLoadError.CONFIGURATION -> R.string.breed_list_error_configuration
+        FeedViewModel.BreedLoadError.AUTHENTICATION -> R.string.breed_list_error_authentication
+        FeedViewModel.BreedLoadError.DATE_TIME -> R.string.breed_list_error_date_time
+        FeedViewModel.BreedLoadError.NETWORK -> R.string.breed_list_error_network
+        FeedViewModel.BreedLoadError.SERVER -> R.string.breed_list_error_server
+        FeedViewModel.BreedLoadError.RESPONSE -> R.string.breed_list_error_response
+        FeedViewModel.BreedLoadError.UNKNOWN -> R.string.breed_list_error_unknown
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 8.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Text(
+            text = stringResource(message),
+            style = MaterialTheme.typography.bodyMedium,
+            textAlign = TextAlign.Center,
+        )
+        if (error.hasCachedData) {
+            Text(
+                text = stringResource(R.string.breed_list_using_cache),
+                style = MaterialTheme.typography.bodySmall,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.padding(top = 4.dp),
+            )
+        }
+        Button(
+            onClick = onRetry,
+            modifier = Modifier.padding(top = 8.dp),
+        ) {
+            Text(stringResource(R.string.retry))
         }
     }
 }
@@ -540,7 +619,9 @@ fun FilterSheetContentPreview() {
         showOnlyMyPosts = false,
         onShowOnlyMyPostsChange = {},
         checkedItems = mapOf("a" to false, "b" to false),
+        breedUiState = FeedViewModel.BreedUiState.Ready,
         toBreedName = { "breed" },
-        onCheckedChange = { _, _ -> }
+        onCheckedChange = { _, _ -> },
+        onRetryBreedList = {},
     )
 }

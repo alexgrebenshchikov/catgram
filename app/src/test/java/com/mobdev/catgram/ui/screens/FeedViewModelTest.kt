@@ -25,13 +25,18 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.test.*
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.ResponseBody.Companion.toResponseBody
 import org.junit.After
 import org.junit.Assert.*
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
+import retrofit2.HttpException
+import retrofit2.Response
 import java.io.File
+import java.io.IOException
 import javax.net.ssl.SSLHandshakeException
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -279,7 +284,13 @@ class FeedViewModelTest {
 
         assertEquals("Post created successfully!", viewModel.snackbarMessage)
         assertFalse(viewModel.isCreatingPost)
-        coVerify { userPostsRepository.addUserPost("http://uploaded.jpg", "My cute cat", any()) }
+        coVerify {
+            userPostsRepository.addUserPost(
+                "http://uploaded.jpg",
+                "My cute cat",
+                any(),
+            )
+        }
     }
 
     @Test
@@ -543,12 +554,20 @@ class FeedViewModelTest {
     // ============ Edge Cases and Error Handling ============
     @Test
     fun `handles network error gracefully`() = runTest {
-        coEvery { catgramApiRepository.getBreedList() } throws RuntimeException("Network error")
+        coEvery { catgramApiRepository.getBreedList() } throws IOException("Network error")
 
         val viewModel = createViewModel()
         advanceUntilIdle()
 
-        assertEquals(FeedViewModel.FeedUiState.Error, viewModel.uiState)
+        assertEquals(FeedViewModel.FeedUiState.Ready, viewModel.uiState)
+        assertEquals(
+            FeedViewModel.BreedUiState.Error(
+                reason = FeedViewModel.BreedLoadError.NETWORK,
+                hasCachedData = false,
+            ),
+            viewModel.breedUiState,
+        )
+        coVerify { catgramApiRepository.getCatsData(any(), any(), 0) }
     }
 
     @Test
@@ -569,8 +588,73 @@ class FeedViewModelTest {
         val viewModel = createViewModel()
         advanceUntilIdle()
 
-        assertEquals(FeedViewModel.FeedUiState.Error, viewModel.uiState)
+        assertEquals(FeedViewModel.FeedUiState.Ready, viewModel.uiState)
+        assertEquals(
+            FeedViewModel.BreedUiState.Error(
+                reason = FeedViewModel.BreedLoadError.DATE_TIME,
+                hasCachedData = false,
+            ),
+            viewModel.breedUiState,
+        )
         assertEquals("Check date time", viewModel.snackbarMessage)
+    }
+
+    @Test
+    fun `invalid api key is reported as an authentication error`() = runTest {
+        val response = Response.error<List<BreedInfo>>(
+            403,
+            "{}".toResponseBody("application/json".toMediaType()),
+        )
+        coEvery { catgramApiRepository.getBreedList() } throws HttpException(response)
+
+        val viewModel = createViewModel()
+        advanceUntilIdle()
+
+        assertEquals(
+            FeedViewModel.BreedUiState.Error(
+                reason = FeedViewModel.BreedLoadError.AUTHENTICATION,
+                hasCachedData = false,
+            ),
+            viewModel.breedUiState,
+        )
+        assertEquals(FeedViewModel.FeedUiState.Ready, viewModel.uiState)
+    }
+
+    @Test
+    fun `uses cached breed list when refresh fails`() = runTest {
+        val firstViewModel = createViewModel()
+        advanceUntilIdle()
+        assertEquals(FeedViewModel.BreedUiState.Ready, firstViewModel.breedUiState)
+
+        coEvery { catgramApiRepository.getBreedList() } throws IOException("Offline")
+        val secondViewModel = createViewModel()
+        advanceUntilIdle()
+
+        assertEquals("Abyssinian", secondViewModel.toBreedName("abys"))
+        assertEquals(
+            FeedViewModel.BreedUiState.Error(
+                reason = FeedViewModel.BreedLoadError.NETWORK,
+                hasCachedData = true,
+            ),
+            secondViewModel.breedUiState,
+        )
+        assertEquals(FeedViewModel.FeedUiState.Ready, secondViewModel.uiState)
+    }
+
+    @Test
+    fun `retry loads breed list after a failure`() = runTest {
+        coEvery { catgramApiRepository.getBreedList() } throws IOException("Offline")
+        val viewModel = createViewModel()
+        advanceUntilIdle()
+        assertTrue(viewModel.breedUiState is FeedViewModel.BreedUiState.Error)
+
+        coEvery { catgramApiRepository.getBreedList() } returns testBreeds
+        viewModel.retryBreedList()
+        advanceUntilIdle()
+
+        assertEquals(FeedViewModel.BreedUiState.Ready, viewModel.breedUiState)
+        assertEquals("Abyssinian", viewModel.toBreedName("abys"))
+        coVerify(exactly = 2) { catgramApiRepository.getBreedList() }
     }
 
     @Test
@@ -615,14 +699,13 @@ class FeedViewModelTest {
     }
 
     @Test
-    fun `page with only duplicate items marks all data loaded`() = runTest {
-        // Edge case: if server returns items we already have, we stop pagination
-        // This prevents infinite loops when API keeps returning same data
+    fun `page with only duplicate items advances to find later unique items`() = runTest {
         val page0Cats = listOf(CatsApiData("cat1", "url1", emptyList()))
+        val page2Cats = listOf(CatsApiData("cat2", "url2", emptyList()))
 
         coEvery { catgramApiRepository.getCatsData(any(), any(), 0) } returns page0Cats
-        // Page 1 returns the same item (duplicate)
         coEvery { catgramApiRepository.getCatsData(any(), any(), 1) } returns page0Cats
+        coEvery { catgramApiRepository.getCatsData(any(), any(), 2) } returns page2Cats
 
         val viewModel = createViewModel()
         advanceUntilIdle()
@@ -630,18 +713,8 @@ class FeedViewModelTest {
         viewModel.loadDataPageIfNeeded(page = 1)
         advanceUntilIdle()
 
-        // After receiving only duplicates, further loading should be prevented
-        clearMocks(catgramApiRepository, answers = false)
-        coEvery { catgramApiRepository.getCatsData(any(), any(), any()) } returns listOf(
-            CatsApiData("cat2", "url2", emptyList())
-        )
-
-        viewModel.loadDataPageIfNeeded(page = 2)
-        advanceUntilIdle()
-
-        // Note: This is current behavior - duplicates mark loading as complete
-        // to prevent infinite loops. New items on page 2 won't be loaded.
-        coVerify(exactly = 0) { catgramApiRepository.getCatsData(any(), any(), 2) }
+        coVerify { catgramApiRepository.getCatsData(any(), any(), 2) }
+        assertTrue(viewModel.items.any { it.id == "cat2" })
     }
 
     @Test
@@ -715,5 +788,57 @@ class FeedViewModelTest {
 
         // Should have persisted filter type
         assertEquals(FeedViewModel.FilterType.USERS_POSTS, viewModel2.selectedFilterType)
+    }
+
+    @Test
+    fun `filter preferences remain isolated when accounts change in the same viewModel`() = runTest {
+        val viewModel = createViewModel()
+        advanceUntilIdle()
+
+        // Account A stores a distinct set of preferences.
+        viewModel.updateChoosedBreeds("abys", true)
+        viewModel.updateFilterType(FeedViewModel.FilterType.USERS_POSTS)
+        viewModel.updateShowOnlyMyPosts(true)
+        advanceUntilIdle()
+
+        // Sign out A and sign in B without recreating the activity-scoped ViewModel.
+        val userB = mockk<FirebaseUser>(relaxed = true)
+        every { userB.uid } returns "user-b"
+        every { authProvider.getCurrentUser() } returns userB
+        every { authProvider.getCurrentUserOrThrow() } returns userB
+        viewModel.reset()
+        advanceUntilIdle()
+        viewModel.loadFilterState()
+        advanceUntilIdle()
+
+        assertEquals(FeedViewModel.FilterType.CATS_BY_BREED, viewModel.selectedFilterType)
+        assertFalse(viewModel.showOnlyMyPosts)
+        assertFalse(viewModel.choosedBreeds["abys"] == true)
+
+        // B's write must use B's keys rather than the keys first opened for A.
+        viewModel.updateChoosedBreeds("beng", true)
+        advanceUntilIdle()
+
+        every { authProvider.getCurrentUser() } returns mockFirebaseUser
+        every { authProvider.getCurrentUserOrThrow() } returns mockFirebaseUser
+        viewModel.reset()
+        advanceUntilIdle()
+        viewModel.loadFilterState()
+        advanceUntilIdle()
+
+        assertEquals(FeedViewModel.FilterType.USERS_POSTS, viewModel.selectedFilterType)
+        assertTrue(viewModel.showOnlyMyPosts)
+        assertTrue(viewModel.choosedBreeds["abys"] == true)
+        assertFalse(viewModel.choosedBreeds["beng"] == true)
+
+        every { authProvider.getCurrentUser() } returns userB
+        every { authProvider.getCurrentUserOrThrow() } returns userB
+        viewModel.reset()
+        advanceUntilIdle()
+        viewModel.loadFilterState()
+        advanceUntilIdle()
+
+        assertTrue(viewModel.choosedBreeds["beng"] == true)
+        assertFalse(viewModel.choosedBreeds["abys"] == true)
     }
 }

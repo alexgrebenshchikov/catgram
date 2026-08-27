@@ -12,9 +12,9 @@ import com.mobdev.catgram.auth.AuthProvider
 import com.mobdev.catgram.logging.logger
 import com.mobdev.catgram.network.CatsData.CatsUserPostData
 import com.mobdev.catgram.worker.NewPostsPreferences
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.tasks.await
-import kotlinx.coroutines.withContext
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 interface UserPostsRepository {
     suspend fun getNextUserPostsDataPage(
@@ -30,25 +30,28 @@ interface UserPostsRepository {
 
 class FirebaseUserPostsRepository(
     private val authProvider: AuthProvider,
-    private val context: Context
+    private val context: Context,
 ) : UserPostsRepository {
     private val firestore = Firebase.firestore
     private val userPostsColRef = firestore.collection(USER_POSTS_COL)
+    private val paginationMutex = Mutex()
     private var lastFetchedPost: DocumentSnapshot? = null
 
     override suspend fun getNextUserPostsDataPage(
         pageSize: Int,
         showOnlyMyPosts: Boolean,
-    ): List<CatsUserPostData> {
-        val lastPost = withContext(Dispatchers.Main) {
-            lastFetchedPost
-        }
-        return lastPost?.let {
+    ): List<CatsUserPostData> = paginationMutex.withLock {
+        val lastPost = lastFetchedPost
+        lastPost?.let {
             getNextPage(pageSize.toLong(), it, showOnlyMyPosts)
         } ?: getFirstPage(pageSize.toLong(), showOnlyMyPosts)
     }
 
-    override suspend fun addUserPost(url: String, text: String, context: Context) {
+    override suspend fun addUserPost(
+        url: String,
+        text: String,
+        context: Context,
+    ) {
         val currentUser = authProvider.getCurrentUserOrThrow()
         val avatarUrl = authProvider.getAvatarUrl(context)?.toString()
         addUserPost(
@@ -64,7 +67,22 @@ class FirebaseUserPostsRepository(
     }
 
     override suspend fun deleteUserPost(postId: String) {
-        userPostsColRef.document(postId).delete().await()
+        val currentUser = authProvider.getCurrentUserOrThrow()
+        val postRef = userPostsColRef.document(postId)
+        val post = postRef.get().await().toObject(FirebaseUserPost::class.java)
+            ?: return
+        check(post.userId == currentUser.uid) { "Cannot delete another user's post" }
+
+        val batch = firestore.batch()
+        batch.delete(postRef)
+        batch.delete(firestore.collection("likes").document(postId))
+        batch.delete(
+            firestore.collection("users")
+                .document(currentUser.uid)
+                .collection(FAVOURITES_SUBCOLLECTION)
+                .document(favouriteDocumentId(postId, FavouriteItemType.USER_POST))
+        )
+        batch.commit().await()
     }
 
     override fun reset() {
@@ -105,10 +123,8 @@ class FirebaseUserPostsRepository(
             System.currentTimeMillis()
         )
 
-        return withContext(Dispatchers.Main) {
-            lastFetchedPost = snapshot.documents.lastOrNull()
-            return@withContext snapshot.toCatsUserPostDataList()
-        }
+        lastFetchedPost = snapshot.documents.lastOrNull()
+        return snapshot.toCatsUserPostDataList()
     }
 
     private suspend fun getNextPage(
@@ -131,10 +147,8 @@ class FirebaseUserPostsRepository(
             .get()
             .await()
 
-        return withContext(Dispatchers.Main) {
-            lastFetchedPost = snapshot.documents.lastOrNull() ?: return@withContext emptyList()
-            return@withContext snapshot.toCatsUserPostDataList()
-        }
+        lastFetchedPost = snapshot.documents.lastOrNull() ?: return emptyList()
+        return snapshot.toCatsUserPostDataList()
     }
 
     private suspend fun addUserPost(post: FirebaseUserPost) {
@@ -173,4 +187,3 @@ data class FirebaseUserPost(
 ) {
     constructor() : this("", "", "", "", null, null)
 }
-

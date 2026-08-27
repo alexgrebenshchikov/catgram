@@ -16,9 +16,9 @@ fun makeNotification(
     context: Context,
     title: String,
     message: String,
-    params: NotificationParams
-) {
-    with(params) {
+    params: NotificationParams,
+): Boolean {
+    return with(params) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             // Create the NotificationChannel, but only on API 26+ because
             // the NotificationChannel class is new and not in the support library
@@ -50,8 +50,10 @@ fun makeNotification(
         try {
             logger.d( "Notification create")
             NotificationManagerCompat.from(context).notify(notificationId, builder.build())
+            true
         } catch (e: SecurityException) {
             logger.e( "Notifications permission not granted: ${e.message}", e)
+            false
         }
     }
 }
@@ -63,10 +65,7 @@ fun createPendingIntent(appContext: Context): PendingIntent {
 
     // Flag to detect unsafe launches of intents for Android 12 and higher
     // to improve platform security
-    var flags = PendingIntent.FLAG_UPDATE_CURRENT
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-        flags = flags or PendingIntent.FLAG_IMMUTABLE
-    }
+    val flags = PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
 
     return PendingIntent.getActivity(
         appContext,

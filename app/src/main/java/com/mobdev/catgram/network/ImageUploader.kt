@@ -8,38 +8,35 @@ import android.net.Uri
 import android.util.Base64
 import androidx.core.graphics.scale
 import androidx.exifinterface.media.ExifInterface
-import java.io.ByteArrayOutputStream
-
 import com.mobdev.catgram.BuildConfig
+import java.io.ByteArrayOutputStream
 
 private const val MAX_IMAGE_DIMENSION = 1200
 private const val JPEG_QUALITY = 85
 
 data class ImageUploadResult(
-    val url: String
+    val url: String,
 )
 
 class ImageUploader(
-    private val apiService: ImageUploadApiService
+    private val apiService: ImageUploadApiService,
 ) {
     suspend fun uploadImage(imageUri: Uri, context: Context): Result<ImageUploadResult> {
         return try {
-            // Resize and convert image to Base64
             val base64Image = resizeAndEncodeImage(imageUri, context)
                 ?: return Result.failure(Throwable("Failed to process image"))
-            // Call API
             val response = apiService.uploadImage(
                 apiKey = BuildConfig.IMGBB_API_KEY,
-                imageBase64 = base64Image
+                imageBase64 = base64Image,
             )
 
             if (response.success && response.data != null) {
-                Result.success(ImageUploadResult(url = response.data.url))
+                Result.success(ImageUploadResult(response.data.url))
             } else {
                 Result.failure(Throwable("Upload failed"))
             }
-        } catch (e: Exception) {
-            Result.failure(Throwable("Error: ${e.message}"))
+        } catch (error: Exception) {
+            Result.failure(error)
         }
     }
 
@@ -89,12 +86,11 @@ class ImageUploader(
                 bitmap = scaledBitmap
             }
 
-            // Compress to JPEG and encode to Base64
-            val outputStream = ByteArrayOutputStream()
-            bitmap.compress(Bitmap.CompressFormat.JPEG, JPEG_QUALITY, outputStream)
-            bitmap.recycle()
-
-            Base64.encodeToString(outputStream.toByteArray(), Base64.NO_WRAP)
+            ByteArrayOutputStream().use { outputStream ->
+                bitmap.compress(Bitmap.CompressFormat.JPEG, JPEG_QUALITY, outputStream)
+                bitmap.recycle()
+                Base64.encodeToString(outputStream.toByteArray(), Base64.NO_WRAP)
+            }
         } catch (_: Exception) {
             null
         }

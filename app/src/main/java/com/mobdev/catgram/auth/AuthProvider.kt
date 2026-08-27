@@ -1,121 +1,99 @@
 package com.mobdev.catgram.auth
 
-import android.app.Activity.RESULT_OK
 import android.content.Context
-import android.content.Intent
 import android.net.Uri
+import android.annotation.SuppressLint
 import androidx.activity.ComponentActivity
-import androidx.activity.result.ActivityResult
-import androidx.activity.result.ActivityResultLauncher
-import androidx.activity.result.contract.ActivityResultContracts
-import com.google.android.gms.auth.api.signin.GoogleSignIn
-import com.google.android.gms.auth.api.signin.GoogleSignInOptions
-import com.google.android.gms.common.api.ApiException
+import androidx.credentials.ClearCredentialStateRequest
+import androidx.credentials.CredentialManager
+import androidx.credentials.CustomCredential
+import androidx.credentials.GetCredentialRequest
+import com.google.android.libraries.identity.googleid.GetSignInWithGoogleOption
+import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
+import com.google.android.gms.common.ConnectionResult
+import com.google.android.gms.common.GoogleApiAvailability
 import com.google.firebase.auth.FirebaseUser
 import com.google.firebase.auth.GoogleAuthProvider
 import com.google.firebase.auth.ktx.auth
 import com.google.firebase.ktx.Firebase
 import com.mobdev.catgram.R
-import com.mobdev.catgram.logging.logger
+import kotlinx.coroutines.tasks.await
 
 interface AuthProvider {
     fun getCurrentUser(): FirebaseUser?
     fun getCurrentUserOrThrow(): FirebaseUser
     fun isSignedIn(): Boolean
     fun getAvatarUrl(context: Context): Uri?
-    fun signIn(
-        activity: ComponentActivity,
-        signInLauncher: ActivityResultLauncher<Intent>
-    )
-
-    fun createSignInLauncher(
-        activity: ComponentActivity,
-        resultCallback: (SignInResult) -> Unit
-    ): ActivityResultLauncher<Intent>
-
-    fun signOut()
+    suspend fun signIn(activity: ComponentActivity): SignInResult
+    suspend fun signOut(context: Context)
 }
 
 class FirebaseAuthProvider : AuthProvider {
     override fun getCurrentUser(): FirebaseUser? = Firebase.auth.currentUser
 
     override fun getCurrentUserOrThrow(): FirebaseUser =
-        getCurrentUser() ?: throw IllegalStateException("User unauthorized")
+        getCurrentUser() ?: error("User unauthorized")
 
     override fun isSignedIn(): Boolean = getCurrentUser() != null
-    override fun getAvatarUrl(context: Context): Uri? =
-        GoogleSignIn.getLastSignedInAccount(context)?.photoUrl
 
-    override fun signIn(
-        activity: ComponentActivity,
-        signInLauncher: ActivityResultLauncher<Intent>
-    ) {
-        val gso = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
-            .requestIdToken(activity.getString(R.string.your_web_client_id))
-            .requestEmail()
+    override fun getAvatarUrl(context: Context): Uri? = getCurrentUser()?.photoUrl
+
+    @SuppressLint("CredentialManagerSignInWithGoogle") // Response types are checked immediately below.
+    override suspend fun signIn(activity: ComponentActivity): SignInResult = runCatching {
+        ensureGooglePlayServicesAvailable(activity)
+        val googleOption = GetSignInWithGoogleOption.Builder(
+            serverClientId = activity.getString(R.string.your_web_client_id),
+        ).build()
+        val request = GetCredentialRequest.Builder()
+            .addCredentialOption(googleOption)
             .build()
-        val googleSignInClient = GoogleSignIn.getClient(activity, gso)
+        val credential = CredentialManager.create(activity)
+            .getCredential(request = request, context = activity)
+            .credential
+        check(credential is CustomCredential) { "Unexpected credential type" }
+        check(
+            credential.type == GoogleIdTokenCredential.TYPE_GOOGLE_ID_TOKEN_CREDENTIAL ||
+                credential.type == GoogleIdTokenCredential.TYPE_GOOGLE_ID_TOKEN_SIWG_CREDENTIAL
+        ) { "Unexpected Google credential type" }
 
-        googleSignInClient.signOut()
-        signInLauncher.launch(googleSignInClient.signInIntent)
-    }
+        val googleCredential = GoogleIdTokenCredential.createFrom(credential.data)
+        val firebaseCredential = GoogleAuthProvider.getCredential(googleCredential.idToken, null)
+        Firebase.auth.signInWithCredential(firebaseCredential).await()
+        checkNotNull(Firebase.auth.currentUser) { "Firebase sign-in returned no user" }
+    }.fold(
+        onSuccess = { SignInResult.Succeed },
+        onFailure = { SignInResult.Failed(it) },
+    )
 
-    override fun createSignInLauncher(
-        activity: ComponentActivity,
-        resultCallback: (SignInResult) -> Unit
-    ): ActivityResultLauncher<Intent> {
-        return activity.registerForActivityResult(
-            ActivityResultContracts.StartActivityForResult()
-        ) { result: ActivityResult ->
-            logger.d("act result: ${result.resultCode} ${result.data}")
-            if (result.resultCode == RESULT_OK && result.data != null) {
-                val task = GoogleSignIn.getSignedInAccountFromIntent(result.data)
-                try {
-                    val account = task.getResult(
-                        ApiException::class.java
-                    )
-                    val idToken = account.idToken
-                    when {
-                        idToken != null -> {
-                            val firebaseCredential = GoogleAuthProvider.getCredential(idToken, null)
-                            val auth = Firebase.auth
-                            auth.signInWithCredential(firebaseCredential)
-                                .addOnCompleteListener(activity) { firebaseTask ->
-                                    if (firebaseTask.isSuccessful) {
-                                        val user = auth.currentUser
-                                        logger.d("signInWithCredential:success $user")
-                                        resultCallback(SignInResult.Succeed)
-                                    } else {
-                                        logger.e(
-                                            "signInWithCredential:failure ${firebaseTask.exception?.message}",
-                                            Throwable()
-                                        )
-                                        resultCallback(
-                                            SignInResult.Failed(
-                                                firebaseTask.exception
-                                                    ?: Throwable("signInWithCredential:failure")
-                                            )
-                                        )
-                                    }
-                                }
-                        }
-
-                        else -> {
-                            logger.d("No ID token!")
-                            resultCallback(SignInResult.Failed(Throwable("No ID token!")))
-                        }
-                    }
-                } catch (e: ApiException) {
-                    resultCallback(SignInResult.Failed(e))
-                }
-            } else {
-                resultCallback(SignInResult.Failed(Throwable(activity.getString(R.string.sign_in_default_error))))
-            }
+    override suspend fun signOut(context: Context) {
+        Firebase.auth.signOut()
+        if (isGooglePlayServicesAvailable(context)) {
+            CredentialManager.create(context).clearCredentialState(ClearCredentialStateRequest())
         }
     }
 
-    override fun signOut() = Firebase.auth.signOut()
+    private fun ensureGooglePlayServicesAvailable(context: Context) {
+        if (!isGooglePlayServicesAvailable(context)) {
+            throw GooglePlayServicesUnavailableException(
+                context.getString(R.string.google_play_services_unavailable),
+            )
+        }
+    }
+
+    private fun isGooglePlayServicesAvailable(context: Context): Boolean =
+        GoogleApiAvailability.getInstance()
+            .isGooglePlayServicesAvailable(
+                context,
+                CREDENTIAL_MANAGER_MIN_GMS_VERSION,
+            ) == ConnectionResult.SUCCESS
+
+    companion object {
+        // Minimum required by androidx.credentials:credentials-play-services-auth.
+        private const val CREDENTIAL_MANAGER_MIN_GMS_VERSION = 230_815_045
+    }
 }
+
+class GooglePlayServicesUnavailableException(message: String) : IllegalStateException(message)
 
 sealed interface SignInResult {
     data object Succeed : SignInResult

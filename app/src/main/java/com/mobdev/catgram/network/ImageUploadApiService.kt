@@ -10,7 +10,7 @@ import retrofit2.http.Query
 data class ImageUploadResponse(
     val success: Boolean,
     val status: Int,
-    val data: ImageUploadData? = null
+    val data: ImageUploadData? = null,
 )
 
 @Serializable
@@ -23,7 +23,6 @@ interface ImageUploadApiService {
     @POST("1/upload")
     suspend fun uploadImage(
         @Query("key") apiKey: String,
-        @Field("image") imageBase64: String
+        @Field("image") imageBase64: String,
     ): ImageUploadResponse
 }
-

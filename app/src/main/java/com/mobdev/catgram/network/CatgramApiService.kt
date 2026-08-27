@@ -7,10 +7,9 @@ interface CatgramApiService {
     @GET("images/search")
     suspend fun getCatsData(
         @Query("limit") limit: Int,
-        @Query("breed_ids") breedIds: List<String>,
+        @Query("breed_ids") breedIds: String?,
         @Query("page") page: Int,
         @Query("order") order: String,
-        @Query("api_key") apiKey: String
     ): List<CatsData.CatsApiData>
 
     @GET("breeds")

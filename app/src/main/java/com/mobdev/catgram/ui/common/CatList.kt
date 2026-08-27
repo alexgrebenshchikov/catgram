@@ -87,14 +87,6 @@ import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Locale
 
-typealias FavClickCallback = (Boolean, CatCardData) -> Unit
-typealias CheckIsFavCallback = (String) -> Boolean
-typealias CheckIsEnabledCallback = (String) -> Boolean
-typealias GetLikesCountCallback = ((String) -> Long?)?
-typealias OnErrorItemClicked = (() -> Unit)?
-typealias OnPostDeleteCallback = ((CatCardData.UserPost) -> Unit)?
-typealias CheckIsMyPostCallback = (String) -> Boolean
-
 @Composable
 fun CatList(
     itemList: List<CatCardData>,
@@ -183,7 +175,7 @@ fun CatsApiCard(
     getLikesCount: GetLikesCountCallback?,
     checkIsEnabledCallback: CheckIsEnabledCallback
 ) {
-    val isActivated = checkIsFavourite(item.id)
+    val isActivated = checkIsFavourite(item)
     val isEnabled = checkIsEnabledCallback(item.id)
     val likesCounter = getLikesCount?.invoke(item.id)
 
@@ -220,7 +212,7 @@ fun UserPostCard(
     onPostDeleteCallback: (() -> Unit)?,
     checkIsEnabledCallback: CheckIsEnabledCallback
 ) {
-    val isActivated = checkIsFavourite(item.id)
+    val isActivated = checkIsFavourite(item)
     val isEnabled = checkIsEnabledCallback(item.id)
 
     val likesCounter = getLikesCount?.invoke(item.id)
@@ -634,24 +626,4 @@ fun UserPostCardPreview() {
             checkIsEnabledCallback = { true }
         )
     }
-}
-
-sealed interface CatCardData {
-    val id: String
-
-    data class CatsApi(
-        override val id: String,
-        val url: String,
-        val breeds: List<BreedInfo>
-    ) : CatCardData
-
-    data class UserPost(
-        override val id: String,
-        val userId: String,
-        val url: String,
-        val text: String,
-        val displayName: String,
-        val avatarUrl: String?,
-        val timestamp: Timestamp?
-    ) : CatCardData
 }

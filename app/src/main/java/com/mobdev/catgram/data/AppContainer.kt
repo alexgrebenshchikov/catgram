@@ -5,16 +5,19 @@ import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.preferencesDataStore
 import com.jakewharton.retrofit2.converter.kotlinx.serialization.asConverterFactory
+import com.mobdev.catgram.BuildConfig
 import com.mobdev.catgram.auth.AuthProvider
 import com.mobdev.catgram.auth.FirebaseAuthProvider
 import com.mobdev.catgram.coroutines.DefaultDispatcherProvider
 import com.mobdev.catgram.coroutines.DispatcherProvider
 import com.mobdev.catgram.ml.CatDetector
+import com.mobdev.catgram.network.CatApiKeyInterceptor
 import com.mobdev.catgram.network.CatgramApiService
 import com.mobdev.catgram.network.ImageUploadApiService
 import com.mobdev.catgram.network.ImageUploader
 import kotlinx.serialization.json.Json
 import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.OkHttpClient
 import retrofit2.Retrofit
 
 interface AppContainer {
@@ -33,20 +36,23 @@ class DefaultAppContainer(private val context: Context) : AppContainer {
 
     private val catgramApiRetrofitService: CatgramApiService by lazy {
         val baseUrl = "https://api.thecatapi.com/v1/"
+        val client = OkHttpClient.Builder()
+            .addInterceptor(CatApiKeyInterceptor(BuildConfig.CAT_API_KEY))
+            .build()
         val retrofit: Retrofit = Retrofit.Builder()
             .addConverterFactory(json.asConverterFactory("application/json".toMediaType()))
             .baseUrl(baseUrl)
+            .client(client)
             .build()
         retrofit.create(CatgramApiService::class.java)
     }
 
     private val imageUploadApiRetrofitService: ImageUploadApiService by lazy {
-        val baseUrl = "https://api.imgbb.com/"
-        val retrofit: Retrofit = Retrofit.Builder()
+        Retrofit.Builder()
             .addConverterFactory(json.asConverterFactory("application/json".toMediaType()))
-            .baseUrl(baseUrl)
+            .baseUrl("https://api.imgbb.com/")
             .build()
-        retrofit.create(ImageUploadApiService::class.java)
+            .create(ImageUploadApiService::class.java)
     }
 
     override val catgramApiRepository: CatgramApiRepository by lazy {

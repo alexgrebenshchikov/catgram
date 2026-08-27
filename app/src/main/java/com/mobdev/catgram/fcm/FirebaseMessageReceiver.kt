@@ -9,7 +9,7 @@ import com.mobdev.catgram.notifications.makeNotification
 
 class FirebaseMessageReceiver : FirebaseMessagingService() {
     override fun onNewToken(token: String) {
-        logger.d( "Refreshed FCM token: $token")
+        logger.d("FCM registration token refreshed")
     }
 
     override fun onMessageReceived(message: RemoteMessage) {

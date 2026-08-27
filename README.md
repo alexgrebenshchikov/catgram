@@ -48,5 +48,9 @@ To keep the content relevant, the app uses AI-based image validation. When a use
 
 ---
 
+### Firebase deployment notes
 
+- Favourites are migrated lazily from the legacy arrays in `users/{uid}` to `users/{uid}/favourites_v2/{type:itemId}`. The migration is idempotent and sets `favouritesSchemaVersion = 2` only after all documents are written.
+- Existing Firestore rules must allow each authenticated user to read and write only their own `favourites_v2` subcollection. Post ownership remains enforced by the existing `user_posts` rule.
+- Post images continue to be uploaded to ImgBB. Deleting a post removes its Firestore data but does not delete the ImgBB image.
 

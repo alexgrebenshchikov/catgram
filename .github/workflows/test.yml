@@ -33,23 +33,19 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-gradle-
 
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+
       - name: Create secrets.properties
         run: |
           echo "IMGBB_API_KEY=${{ secrets.IMGBB_API_KEY }}" >> secrets.properties
           echo "CAT_API_KEY=${{ secrets.CAT_API_KEY }}" >> secrets.properties
 
-      - name: Create release-signing.properties (dummy for tests)
-        run: |
-          echo "storeFile=dummy.keystore" >> release-signing.properties
-          echo "storePassword=dummy" >> release-signing.properties
-          echo "keyAlias=dummy" >> release-signing.properties
-          echo "keyPassword=dummy" >> release-signing.properties
-
-      - name: Grant execute permission for gradlew
-        run: chmod +x gradlew
-
       - name: Run unit tests
         run: ./gradlew testDebugUnitTest --stacktrace
+
+      - name: Run Android lint
+        run: ./gradlew lintDebug --stacktrace
 
       - name: Upload test results
         uses: actions/upload-artifact@v4

@@ -45,20 +45,23 @@ class NewPostsNotificationWorker(
                 logger.d("New posts found, checking if can send notification")
 
                 if (NewPostsPreferences.canSendNotification(applicationContext)) {
-                    sendNewPostsNotification()
-                    NewPostsPreferences.setLastNotificationTimestamp(
-                        applicationContext,
-                        System.currentTimeMillis()
-                    )
-                    logger.d("Notification sent for new posts")
+                    if (sendNewPostsNotification()) {
+                        NewPostsPreferences.setLastNotificationTimestamp(
+                            applicationContext,
+                            System.currentTimeMillis()
+                        )
+                        logger.d("Notification sent for new posts")
+                    } else {
+                        return Result.success()
+                    }
                 } else {
                     logger.d("Notification throttled - already sent within 24 hours")
+                    return Result.success()
                 }
             } else {
                 logger.d("No new posts found")
             }
 
-            // Always update last checked timestamp
             NewPostsPreferences.setLastCheckedTimestamp(
                 applicationContext,
                 System.currentTimeMillis()
@@ -71,16 +74,15 @@ class NewPostsNotificationWorker(
         }
     }
 
-    private fun sendNewPostsNotification() {
+    private fun sendNewPostsNotification(): Boolean =
         with(applicationContext) {
-            makeNotification(
+            return@with makeNotification(
                 this,
                 getString(R.string.new_posts_notification_title),
                 getString(R.string.new_posts_notification_text),
                 NotificationParams(CHANNEL_NAME, CHANNEL_DESC, CHANNEL_ID, NOTIFICATION_ID)
             )
         }
-    }
 
     companion object {
         private val CHANNEL_NAME: CharSequence = "New Posts Notifications"

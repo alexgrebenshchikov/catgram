@@ -4,6 +4,7 @@
     <string name="filter_by_breed">Фильтр по породе</string>
     <string name="start_screen_title">Добро пожаловать в Catgram</string>
     <string name="sign_in_default_error">Что-то пошло не так, попробуйте позже.</string>
+    <string name="google_play_services_unavailable">Сервисы Google Play недоступны или устарели. Установите или обновите их либо используйте образ эмулятора с Google Play.</string>
     <string name="sign_out_button_text">Выйти</string>
     <string name="unknown_user_name">Неизвестный пользователь</string>
     <string name="unknown_email">Неизвестный email</string>
@@ -47,7 +48,16 @@
     <string name="snackbar_load_data_failed">Не удалось загрузить данные</string>
     <string name="snackbar_check_date_time">Ошибка соединения. Проверьте настройки даты и времени на устройстве.</string>
     <string name="sign_in_with_google_account">Войти с помощью Google аккаунта</string>
-    <string name="breed_list_load_failed">Не удалось загрузить список пород. Проверьте подключение к сети и закройте шторку, чтобы попытаться загрузить его снова</string>
+    <string name="breed_list_loading">Загрузка пород…</string>
+    <string name="breed_list_error_configuration">Отсутствует ключ The Cat API. Добавьте CAT_API_KEY в secrets.properties и пересоберите приложение.</string>
+    <string name="breed_list_error_authentication">The Cat API отклонил ключ. Проверьте CAT_API_KEY и пересоберите приложение.</string>
+    <string name="breed_list_error_date_time">Ошибка защищённого соединения. Проверьте дату и время на устройстве.</string>
+    <string name="breed_list_error_network">Не удалось загрузить породы. Проверьте подключение к сети.</string>
+    <string name="breed_list_error_server">The Cat API временно недоступен.</string>
+    <string name="breed_list_error_response">The Cat API вернул некорректный список пород.</string>
+    <string name="breed_list_error_unknown">Не удалось загрузить список пород.</string>
+    <string name="breed_list_using_cache">Показан последний сохранённый список пород.</string>
+    <string name="retry">Повторить</string>
     <string name="new_posts_notification_title">Новые посты с котиками!</string>
     <string name="new_posts_notification_text">Посмотрите новые публикации от сообщества</string>
 </resources>

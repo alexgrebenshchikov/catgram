@@ -6,14 +6,19 @@ plugins {
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
     id("com.google.gms.google-services")
-    id ("kotlinx-serialization")
+    alias(libs.plugins.kotlin.serialization)
 }
 
-// Load API keys from secrets.properties
 val secretsPropertiesFile = rootProject.file("secrets.properties")
 val secretsProperties = Properties()
 if (secretsPropertiesFile.exists()) {
     secretsProperties.load(FileInputStream(secretsPropertiesFile))
+}
+
+val releaseSigningPropertiesFile = rootProject.file("release-signing.properties")
+val releaseSigningProperties = Properties()
+if (releaseSigningPropertiesFile.exists()) {
+    releaseSigningProperties.load(FileInputStream(releaseSigningPropertiesFile))
 }
 
 android {
@@ -23,28 +28,31 @@ android {
     defaultConfig {
         applicationId = "com.mobdev.catgram"
         minSdk = 24
-        targetSdk = 34
-        versionCode = 6
-        versionName = "1.6"
+        targetSdk = 35
+        versionCode = 7
+        versionName = "1.7"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-
-        // API keys from secrets.properties
-        buildConfigField("String", "IMGBB_API_KEY", "\"${secretsProperties["IMGBB_API_KEY"] ?: ""}\"")
-        buildConfigField("String", "CAT_API_KEY", "\"${secretsProperties["CAT_API_KEY"] ?: ""}\"")
+        buildConfigField(
+            "String",
+            "IMGBB_API_KEY",
+            "\"${secretsProperties["IMGBB_API_KEY"] ?: ""}\"",
+        )
+        buildConfigField(
+            "String",
+            "CAT_API_KEY",
+            "\"${secretsProperties["CAT_API_KEY"] ?: ""}\"",
+        )
     }
 
     signingConfigs {
-        create("release") {
-            val keystorePropertiesFile = rootProject.file("release-signing.properties")
-            val keystoreProperties = Properties()
-
-            keystoreProperties.load(FileInputStream(keystorePropertiesFile))
-
-            storeFile  = file(keystoreProperties["storeFile"] as String)
-            storePassword =  keystoreProperties["storePassword"] as String
-            keyAlias = keystoreProperties["keyAlias"] as String
-            keyPassword = keystoreProperties["keyPassword"] as String
+        if (releaseSigningPropertiesFile.exists()) {
+            create("release") {
+                storeFile = file(requireNotNull(releaseSigningProperties.getProperty("storeFile")))
+                storePassword = requireNotNull(releaseSigningProperties.getProperty("storePassword"))
+                keyAlias = requireNotNull(releaseSigningProperties.getProperty("keyAlias"))
+                keyPassword = requireNotNull(releaseSigningProperties.getProperty("keyPassword"))
+            }
         }
     }
 
@@ -56,7 +64,7 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
-            signingConfig = signingConfigs.getByName("release")
+            signingConfig = signingConfigs.findByName("release")
         }
     }
     compileOptions {
@@ -93,6 +101,7 @@ dependencies {
     implementation(libs.play.services.auth)
     implementation(libs.androidx.credentials)
     implementation(libs.androidx.credentials.play.services.auth)
+    implementation(libs.googleid)
     implementation(libs.androidx.lifecycle.viewmodel.compose)
     // Retrofit
     implementation(libs.retrofit)
@@ -123,6 +132,7 @@ dependencies {
 
     testImplementation(libs.junit)
     testImplementation(libs.mockk)
+    testImplementation(libs.mockwebserver)
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(libs.androidx.arch.core.testing)
     androidTestImplementation(libs.androidx.junit)

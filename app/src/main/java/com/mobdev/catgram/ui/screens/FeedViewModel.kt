@@ -23,16 +23,21 @@ import com.mobdev.catgram.data.UserPostsRepository
 import com.mobdev.catgram.logging.logger
 import com.mobdev.catgram.ml.CatDetector
 import com.mobdev.catgram.network.BreedInfo
+import com.mobdev.catgram.network.CatApiConfigurationException
 import com.mobdev.catgram.network.CatsData.CatsApiData
 import com.mobdev.catgram.network.CatsData.CatsUserPostData
 import com.mobdev.catgram.network.ImageUploader
 import com.mobdev.catgram.ui.common.CatCardData
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.encodeToJsonElement
+import retrofit2.HttpException
+import java.io.IOException
 import javax.net.ssl.SSLHandshakeException
 
 class FeedViewModel(
@@ -59,7 +64,10 @@ class FeedViewModel(
         private set
     private var loadingDataPageJob: Job? = null
     private var loadingFilterStateJob: Job? = null
+    private var loadingBreedListJob: Job? = null
     private var isAllCatsDataLoaded = false
+    private var duplicateOnlyPageCount = 0
+    private var isFilterConfigurationLoaded = false
 
     var selectedFilterType by mutableStateOf(FilterType.CATS_BY_BREED)
         private set
@@ -68,6 +76,8 @@ class FeedViewModel(
     var choosedBreeds by mutableStateOf<Map<String, Boolean>>(mapOf())
         private set
     private var breedIdToName: Map<String, String> = mapOf()
+    var breedUiState: BreedUiState by mutableStateOf(BreedUiState.Ready)
+        private set
 
     private val json = Json { ignoreUnknownKeys = true }
 
@@ -87,23 +97,14 @@ class FeedViewModel(
         shouldScrollToTop = false
     }
 
-    private val breedsKey: Preferences.Key<String>
-            by lazy {
-                val userUid = authProvider.getCurrentUserOrThrow().uid
-                stringPreferencesKey("$userUid:breeds")
-            }
+    private fun breedsKey(userUid: String) = stringPreferencesKey("$userUid:breeds")
 
-    private val filterTypeKey: Preferences.Key<String>
-            by lazy {
-                val userUid = authProvider.getCurrentUserOrThrow().uid
-                stringPreferencesKey("$userUid:filterType")
-            }
+    private fun filterTypeKey(userUid: String) = stringPreferencesKey("$userUid:filterType")
 
-    private val showOnlyMyPostsKey: Preferences.Key<String>
-            by lazy {
-                val userUid = authProvider.getCurrentUserOrThrow().uid
-                stringPreferencesKey("$userUid:showOnlyMyPosts")
-            }
+    private fun showOnlyMyPostsKey(userUid: String) =
+        stringPreferencesKey("$userUid:showOnlyMyPosts")
+
+    private val breedListCacheKey = stringPreferencesKey("breed-list-cache:v1")
 
 
     init {
@@ -113,54 +114,48 @@ class FeedViewModel(
     }
 
     fun loadFilterState() {
+        val userUid = authProvider.getCurrentUser()?.uid ?: return
         viewModelScope.launch(dispatcherProvider.mainImmediate) {
-            if (uiState is FeedUiState.Loading) return@launch
+            if (loadingFilterStateJob?.isActive == true) return@launch
             uiState = FeedUiState.Loading(true)
 
             loadingFilterStateJob = viewModelScope.launch(dispatcherProvider.mainImmediate) {
                 try {
-                    val (result, filterType, showOnlyMyPostsEnabled, breedInfoList) = withContext(
-                        dispatcherProvider.io
-                    ) {
+                    val storedState = withContext(dispatcherProvider.io) {
                         val prefs = dataStore.data.first()
-                        val filterType = getFilterTypeFromStore(prefs)
-                        val showOnlyMyPosts = getShowOnlyMyPostsFromStore(prefs)
-                        try {
-                            val breedInfoList = catgramApiRepository.getBreedList()
-                            val breeds = breedInfoList.map { it.id }
-                            val breedsFromStore = getBreedsFromStore(prefs)
-                            val breedsResult = breeds.associateWith { false }.let {
-                                it.plus(breedsFromStore.filter { entry -> breeds.contains(entry.key) && entry.value })
-                            }
-                            updateBreedsDataStore(breedsResult)
-                            FilterStateData(
-                                breedsResult,
-                                filterType,
-                                showOnlyMyPosts,
-                                breedInfoList
-                            )
-                        } catch (e: Throwable) {
-                            when(filterType) {
-                                FilterType.USERS_POSTS -> FilterStateData(
-                                    mapOf(),
-                                    filterType,
-                                    showOnlyMyPosts,
-                                    listOf()
-                                )
-                                FilterType.CATS_BY_BREED -> throw e
-                            }
-                        }
+                        StoredFilterState(
+                            choosedBreeds = getBreedsFromStore(prefs, userUid),
+                            filterType = getFilterTypeFromStore(prefs, userUid),
+                            showOnlyMyPosts = getShowOnlyMyPostsFromStore(prefs, userUid),
+                            cachedBreedInfoList = getBreedListFromStore(prefs),
+                        )
                     }
 
-                    selectedFilterType = filterType
-                    showOnlyMyPosts = showOnlyMyPostsEnabled
-                    breedIdToName = breedInfoList.associate { it.id to it.name }
-                    choosedBreeds = result
+                    selectedFilterType = storedState.filterType
+                    showOnlyMyPosts = storedState.showOnlyMyPosts
+                    if (storedState.cachedBreedInfoList.isNotEmpty()) {
+                        applyBreedList(
+                            storedState.cachedBreedInfoList,
+                            storedState.choosedBreeds,
+                        )
+                    } else {
+                        // Preserve saved IDs for the feed request even before their display names
+                        // have been refreshed from the API.
+                        choosedBreeds = storedState.choosedBreeds
+                    }
+                    isFilterConfigurationLoaded = true
                     uiState = FeedUiState.Ready
                     loadCatsDataPage(page = 0, replace = true)
+                    startBreedListRefresh(storedState.choosedBreeds)
+                } catch (e: CancellationException) {
+                    throw e
                 } catch (e: Throwable) {
                     logger.e("load filter state failed: ${e.message}", e)
                     uiState = FeedUiState.Error
+                    breedUiState = BreedUiState.Error(
+                        reason = classifyBreedLoadError(e),
+                        hasCachedData = false,
+                    )
                     if (e is SSLHandshakeException) {
                         snackbarMessage = context.getString(R.string.snackbar_check_date_time)
                     }
@@ -192,29 +187,32 @@ class FeedViewModel(
     }
 
     fun updateChoosedBreeds(breed: String, isChoosed: Boolean) {
+        val userUid = authProvider.getCurrentUser()?.uid ?: return
         viewModelScope.launch(dispatcherProvider.mainImmediate) {
             val newChoosedBreeds = choosedBreeds.plus(breed to isChoosed)
             choosedBreeds = newChoosedBreeds
             withContext(dispatcherProvider.io) {
-                updateBreedsDataStore(newChoosedBreeds)
+                updateBreedsDataStore(newChoosedBreeds, userUid)
             }
         }
     }
 
     fun updateFilterType(type: FilterType) {
+        val userUid = authProvider.getCurrentUser()?.uid ?: return
         viewModelScope.launch(dispatcherProvider.mainImmediate) {
             selectedFilterType = type
             withContext(dispatcherProvider.io) {
-                updateFilterTypeDataStore(type)
+                updateFilterTypeDataStore(type, userUid)
             }
         }
     }
 
     fun updateShowOnlyMyPosts(newValue: Boolean) {
+        val userUid = authProvider.getCurrentUser()?.uid ?: return
         viewModelScope.launch(dispatcherProvider.mainImmediate) {
             showOnlyMyPosts = newValue
             withContext(dispatcherProvider.io) {
-                updateShowOnlyMyPostsDataStore(newValue)
+                updateShowOnlyMyPostsDataStore(newValue, userUid)
             }
         }
     }
@@ -235,7 +233,7 @@ class FeedViewModel(
 
                 withContext(dispatcherProvider.io) {
                     val result = imageUploader.uploadImage(imageUri, context)
-                    logger.d("img update res $result")
+                    logger.d("Image upload completed; success=${result.isSuccess}")
                     val imageUrl = result.getOrThrow().url
                     userPostsRepository.addUserPost(imageUrl, postText, context)
                 }
@@ -288,19 +286,22 @@ class FeedViewModel(
     fun reset() {
         viewModelScope.launch(dispatcherProvider.mainImmediate) {
             partialReset()
+            loadingBreedListJob?.cancel()
             items = listOf()
             choosedBreeds = mapOf()
             breedIdToName = mapOf()
+            breedUiState = BreedUiState.Ready
+            isFilterConfigurationLoaded = false
         }
     }
 
-    private fun isFilterStateLoaded() = choosedBreeds.isNotEmpty() ||
-            selectedFilterType == FilterType.USERS_POSTS
+    private fun isFilterStateLoaded() = isFilterConfigurationLoaded
 
     private fun partialReset() {
         uiState = FeedUiState.Ready
         itemsIds = mutableSetOf()
         isAllCatsDataLoaded = false
+        duplicateOnlyPageCount = 0
         lastLoadedPage = -1
         userPostsRepository.reset()
         loadingDataPageJob?.cancel()
@@ -311,6 +312,81 @@ class FeedViewModel(
 
     fun toBreedName(breedId: String): String {
         return breedIdToName[breedId] ?: throw IllegalStateException("Wrong breed id")
+    }
+
+    fun retryBreedList() {
+        if (loadingBreedListJob?.isActive == true) return
+        startBreedListRefresh(choosedBreeds)
+    }
+
+    private fun startBreedListRefresh(savedSelections: Map<String, Boolean>) {
+        loadingBreedListJob?.cancel()
+        loadingBreedListJob = viewModelScope.launch(dispatcherProvider.mainImmediate) {
+            val hasCachedData = breedIdToName.isNotEmpty()
+            breedUiState = BreedUiState.Loading(hasCachedData)
+            try {
+                val breedInfoList = withContext(dispatcherProvider.io) {
+                    catgramApiRepository.getBreedList().also {
+                        if (it.isEmpty()) throw EmptyBreedListException()
+                    }
+                }
+                val currentSelections = choosedBreeds.ifEmpty { savedSelections }
+                val updatedSelections = buildBreedSelection(breedInfoList, currentSelections)
+                applyBreedList(breedInfoList, updatedSelections)
+                breedUiState = BreedUiState.Ready
+                try {
+                    withContext(dispatcherProvider.io) {
+                        updateBreedListCacheDataStore(breedInfoList)
+                    }
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Throwable) {
+                    logger.e("cache breed list failed: ${e.message}", e)
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Throwable) {
+                logger.e("load breed list failed: ${e.message}", e)
+                breedUiState = BreedUiState.Error(
+                    reason = classifyBreedLoadError(e),
+                    hasCachedData = hasCachedData,
+                )
+                if (e is SSLHandshakeException) {
+                    snackbarMessage = context.getString(R.string.snackbar_check_date_time)
+                }
+            }
+        }
+    }
+
+    private fun applyBreedList(
+        breedInfoList: List<BreedInfo>,
+        selectedBreeds: Map<String, Boolean>,
+    ) {
+        breedIdToName = breedInfoList.associate { it.id to it.name }
+        choosedBreeds = buildBreedSelection(breedInfoList, selectedBreeds)
+    }
+
+    private fun buildBreedSelection(
+        breedInfoList: List<BreedInfo>,
+        selectedBreeds: Map<String, Boolean>,
+    ): Map<String, Boolean> {
+        return breedInfoList.associate { breed ->
+            breed.id to (selectedBreeds[breed.id] == true)
+        }
+    }
+
+    private fun classifyBreedLoadError(error: Throwable): BreedLoadError = when (error) {
+        is CatApiConfigurationException -> BreedLoadError.CONFIGURATION
+        is SSLHandshakeException -> BreedLoadError.DATE_TIME
+        is HttpException -> when (error.code()) {
+            401, 403 -> BreedLoadError.AUTHENTICATION
+            in 500..599 -> BreedLoadError.SERVER
+            else -> BreedLoadError.RESPONSE
+        }
+        is EmptyBreedListException,
+        is SerializationException -> BreedLoadError.RESPONSE
+        is IOException -> BreedLoadError.NETWORK
+        else -> BreedLoadError.UNKNOWN
     }
 
     private fun loadCatsDataPage(page: Int, replace: Boolean) {
@@ -339,13 +415,24 @@ class FeedViewModel(
                     }
                 }
 
-                val newItems = catsData.filter { !itemsIds.contains(it.id) }
-                if (newItems.isEmpty()) {
+                if (catsData.isEmpty()) {
                     isAllCatsDataLoaded = true
                     uiState = FeedUiState.Ready
                     return@launch
                 }
                 lastLoadedPage = page
+                val newItems = catsData.filter { !itemsIds.contains(it.id) }
+                if (newItems.isEmpty()) {
+                    duplicateOnlyPageCount++
+                    if (duplicateOnlyPageCount >= MAX_CONSECUTIVE_DUPLICATE_PAGES) {
+                        isAllCatsDataLoaded = true
+                        uiState = FeedUiState.Ready
+                    } else {
+                        loadCatsDataPage(page + 1, replace)
+                    }
+                    return@launch
+                }
+                duplicateOnlyPageCount = 0
                 itemsIds.addAll(newItems.map { it.id })
                 items = if (replace) newItems else items + newItems
                 logger.d("items: ${items.size}")
@@ -353,6 +440,8 @@ class FeedViewModel(
                 if (page == 0) {
                     shouldScrollToTop = true
                 }
+            } catch (error: CancellationException) {
+                throw error
             } catch (error: Throwable) {
                 logger.e("load cats data failed: ${error.message}", error)
                 uiState = FeedUiState.Error
@@ -361,16 +450,40 @@ class FeedViewModel(
         }
     }
 
-    private suspend fun updateBreedsDataStore(newValue: Map<String, Boolean>) {
+    private suspend fun updateBreedsDataStore(
+        newValue: Map<String, Boolean>,
+        userUid: String,
+    ) {
         dataStore.updateData { prefs ->
             prefs.toMutablePreferences().apply {
-                set(breedsKey, json.encodeToJsonElement(newValue).toString())
+                set(breedsKey(userUid), json.encodeToJsonElement(newValue).toString())
             }
         }
     }
 
-    private fun getBreedsFromStore(prefs: Preferences): Map<String, Boolean> {
-        return prefs[breedsKey]?.let {
+    private suspend fun updateBreedListCacheDataStore(breedInfoList: List<BreedInfo>) {
+        dataStore.updateData { prefs ->
+            prefs.toMutablePreferences().apply {
+                set(breedListCacheKey, json.encodeToJsonElement(breedInfoList).toString())
+            }
+        }
+    }
+
+    private fun getBreedListFromStore(prefs: Preferences): List<BreedInfo> {
+        return prefs[breedListCacheKey]?.let {
+            try {
+                json.decodeFromString<List<BreedInfo>>(it)
+            } catch (_: Throwable) {
+                null
+            }
+        }.orEmpty()
+    }
+
+    private fun getBreedsFromStore(
+        prefs: Preferences,
+        userUid: String,
+    ): Map<String, Boolean> {
+        return prefs[breedsKey(userUid)]?.let {
             try {
                 json.decodeFromString<Map<String, Boolean>>(it)
             } catch (_: Throwable) {
@@ -379,16 +492,22 @@ class FeedViewModel(
         } ?: defaultFilterState.choosedBreeds
     }
 
-    private suspend fun updateFilterTypeDataStore(newValue: FilterType) {
+    private suspend fun updateFilterTypeDataStore(
+        newValue: FilterType,
+        userUid: String,
+    ) {
         dataStore.updateData { prefs ->
             prefs.toMutablePreferences().apply {
-                set(filterTypeKey, json.encodeToJsonElement(newValue).toString())
+                set(filterTypeKey(userUid), json.encodeToJsonElement(newValue).toString())
             }
         }
     }
 
-    private fun getFilterTypeFromStore(prefs: Preferences): FilterType {
-        return prefs[filterTypeKey]?.let {
+    private fun getFilterTypeFromStore(
+        prefs: Preferences,
+        userUid: String,
+    ): FilterType {
+        return prefs[filterTypeKey(userUid)]?.let {
             try {
                 json.decodeFromString<FilterType>(it)
             } catch (_: Throwable) {
@@ -397,16 +516,22 @@ class FeedViewModel(
         } ?: defaultFilterState.filterType
     }
 
-    private suspend fun updateShowOnlyMyPostsDataStore(newValue: Boolean) {
+    private suspend fun updateShowOnlyMyPostsDataStore(
+        newValue: Boolean,
+        userUid: String,
+    ) {
         dataStore.updateData { prefs ->
             prefs.toMutablePreferences().apply {
-                set(showOnlyMyPostsKey, json.encodeToJsonElement(newValue).toString())
+                set(showOnlyMyPostsKey(userUid), json.encodeToJsonElement(newValue).toString())
             }
         }
     }
 
-    private fun getShowOnlyMyPostsFromStore(prefs: Preferences): Boolean {
-        return prefs[showOnlyMyPostsKey]?.let {
+    private fun getShowOnlyMyPostsFromStore(
+        prefs: Preferences,
+        userUid: String,
+    ): Boolean {
+        return prefs[showOnlyMyPostsKey(userUid)]?.let {
             try {
                 json.decodeFromString<Boolean>(it)
             } catch (_: Throwable) {
@@ -432,6 +557,7 @@ class FeedViewModel(
         }
 
     companion object {
+        private const val MAX_CONSECUTIVE_DUPLICATE_PAGES = 3
         val factory: ViewModelProvider.Factory = viewModelFactory {
             initializer {
                 val application = this[APPLICATION_KEY] as CatgramApplication
@@ -457,6 +583,25 @@ class FeedViewModel(
         data object Error : FeedUiState
     }
 
+    sealed interface BreedUiState {
+        data object Ready : BreedUiState
+        data class Loading(val hasCachedData: Boolean) : BreedUiState
+        data class Error(
+            val reason: BreedLoadError,
+            val hasCachedData: Boolean,
+        ) : BreedUiState
+    }
+
+    enum class BreedLoadError {
+        CONFIGURATION,
+        AUTHENTICATION,
+        DATE_TIME,
+        NETWORK,
+        SERVER,
+        RESPONSE,
+        UNKNOWN,
+    }
+
     enum class FilterType {
         USERS_POSTS,
         CATS_BY_BREED
@@ -468,10 +613,12 @@ class FeedViewModel(
         val showOnlyMyPosts: Boolean,
     )
 
-    private data class FilterStateData(
+    private data class StoredFilterState(
         val choosedBreeds: Map<String, Boolean>,
         val filterType: FilterType,
         val showOnlyMyPosts: Boolean,
-        val breedInfoList: List<BreedInfo>
+        val cachedBreedInfoList: List<BreedInfo>,
     )
+
+    private class EmptyBreedListException : IOException("The Cat API returned an empty breed list")
 }

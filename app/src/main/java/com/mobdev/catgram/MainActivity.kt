@@ -1,7 +1,6 @@
 package com.mobdev.catgram
 
 import android.Manifest
-import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
@@ -9,16 +8,14 @@ import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.mutableStateOf
 import androidx.core.content.ContextCompat
-import com.google.android.gms.tasks.OnCompleteListener
+import androidx.lifecycle.lifecycleScope
 import com.google.firebase.auth.ktx.auth
 import com.google.firebase.ktx.Firebase
-import com.google.firebase.messaging.FirebaseMessaging
 import com.mobdev.catgram.auth.SignInResult
 import com.mobdev.catgram.logging.logger
 import com.mobdev.catgram.ui.CatgramApp
@@ -28,6 +25,7 @@ import com.mobdev.catgram.ui.screens.FeedViewModel
 import com.mobdev.catgram.ui.theme.CatgramTheme
 import com.mobdev.catgram.worker.scheduleNewPostsNotificationWorker
 import com.mobdev.catgram.worker.scheduleOpenAppReminder
+import kotlinx.coroutines.launch
 
 
 class MainActivity : ComponentActivity() {
@@ -54,13 +52,10 @@ class MainActivity : ComponentActivity() {
     private val authProvider by lazy {
         (application as CatgramApplication).container.authProvider
     }
-    private lateinit var signInLauncher: ActivityResultLauncher<Intent>
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        logger.d("${Firebase.auth.currentUser?.uid}")
+        logger.d("Main activity created; signedIn=${Firebase.auth.currentUser != null}")
         uiState.signedIn.value = authProvider.isSignedIn()
-        signInLauncher = authProvider.createSignInLauncher(this, ::updateUiAfterSignIn)
         mainViewModel.askForPostNotificationsPermissionIfNeeded(this, ::askNotificationPermission)
         scheduleOpenAppReminder(this.applicationContext)
         scheduleNewPostsNotificationWorker(this.applicationContext)
@@ -70,8 +65,8 @@ class MainActivity : ComponentActivity() {
             CatgramTheme {
                 CatgramApp(
                     uiState = uiState,
-                    onSignInClick = { authProvider.signIn(this, signInLauncher) },
-                    onSignOutClick = { authProvider.signOut() },
+                    onSignInClick = ::signIn,
+                    onSignOutClick = ::signOut,
                     getUserInfoCallback = {
                         val user = authProvider.getCurrentUserOrThrow()
                         UserInfo(
@@ -82,6 +77,19 @@ class MainActivity : ComponentActivity() {
                     }
                 )
             }
+        }
+    }
+
+    private fun signIn() {
+        lifecycleScope.launch {
+            updateUiAfterSignIn(authProvider.signIn(this@MainActivity))
+        }
+    }
+
+    private fun signOut() {
+        lifecycleScope.launch {
+            runCatching { authProvider.signOut(this@MainActivity) }
+                .onFailure { logger.e("Credential sign-out failed", it) }
         }
     }
 
@@ -115,21 +123,6 @@ class MainActivity : ComponentActivity() {
                 requestPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
             }
         }
-    }
-
-    private fun getFCMToken() {
-        FirebaseMessaging.getInstance().token.addOnCompleteListener(OnCompleteListener { task ->
-            if (!task.isSuccessful) {
-                return@OnCompleteListener
-            }
-
-            // Get new FCM registration token
-            val token = task.result
-
-            // Log and toast
-            val msg = "FCM token: $token"
-            Toast.makeText(baseContext, msg, Toast.LENGTH_SHORT).show()
-        })
     }
 
     private fun checkForUpdates() {
