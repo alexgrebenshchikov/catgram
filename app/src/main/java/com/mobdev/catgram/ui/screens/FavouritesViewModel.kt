@@ -9,6 +9,7 @@ import androidx.lifecycle.ViewModelProvider.AndroidViewModelFactory.Companion.AP
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
+import com.google.firebase.firestore.FirebaseFirestoreException
 import com.mobdev.catgram.CatgramApplication
 import com.mobdev.catgram.auth.AuthProvider
 import com.mobdev.catgram.coroutines.DispatcherProvider
@@ -188,6 +189,7 @@ class FavouritesViewModel(
             return true
         }
         if (!hasLoadedInitialPage) return false
+        if (isAllFavouritesLoaded) return false
 
         if (isUpdating[item.id] != true) {
             viewModelScope.launch(dispatcherProvider.mainImmediate) {
@@ -200,6 +202,17 @@ class FavouritesViewModel(
                         favouritesRepository.isFavourite(item)
                     }
                     favouriteMembership = favouriteMembership.plus(membershipKey to isFavourite)
+                } catch (e: FirebaseFirestoreException) {
+                    if (e.code == FirebaseFirestoreException.Code.UNAVAILABLE) {
+                        // The synchronous result is already false. Cache it so
+                        // recomposition does not repeatedly issue the same
+                        // server read while Firestore is offline. A refresh
+                        // clears this cache and checks again.
+                        favouriteMembership = favouriteMembership.plus(membershipKey to false)
+                        logger.d("checkInFavourites skipped while offline")
+                    } else {
+                        logger.e("checkInFavourites failed: ${e.message}", e)
+                    }
                 } catch (e: Throwable) {
                     logger.e("checkInFavourites failed: ${e.message}", e)
                 } finally {
@@ -261,6 +274,13 @@ class FavouritesViewModel(
             likes = mapOf()
             fetchFavourites()
         }
+    }
+
+    fun onUserPostDeleted(postId: String) {
+        val membershipKey = "USER_POST:$postId"
+        items = items?.filterNot { it.membershipKey() == membershipKey }
+        favouriteMembership = favouriteMembership.plus(membershipKey to false)
+        likes = likes.minus(postId)
     }
 
     private suspend fun fetchNonEmptyPage(): FavouritesPage {

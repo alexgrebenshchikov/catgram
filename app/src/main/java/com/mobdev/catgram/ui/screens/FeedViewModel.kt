@@ -19,6 +19,7 @@ import com.mobdev.catgram.R
 import com.mobdev.catgram.auth.AuthProvider
 import com.mobdev.catgram.coroutines.DispatcherProvider
 import com.mobdev.catgram.data.CatgramApiRepository
+import com.mobdev.catgram.data.PostDeletionRequiresConnectionException
 import com.mobdev.catgram.data.UserPostsRepository
 import com.mobdev.catgram.logging.logger
 import com.mobdev.catgram.ml.CatDetector
@@ -265,6 +266,11 @@ class FeedViewModel(
                 items = items.filter { it.id != postId }
                 onSuccess()
                 logger.d("post delete success")
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: PostDeletionRequiresConnectionException) {
+                snackbarMessage = context.getString(R.string.snackbar_post_delete_offline)
+                logger.e("Post delete requires a connection", e)
             } catch (e: Throwable) {
                 snackbarMessage = context.getString(R.string.snackbar_post_delete_failed)
                 logger.e("Failed to delete post ${e.message}", e)

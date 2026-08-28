@@ -11,6 +11,7 @@ import com.mobdev.catgram.R
 import com.mobdev.catgram.auth.AuthProvider
 import com.mobdev.catgram.coroutines.TestDispatcherProvider
 import com.mobdev.catgram.data.CatgramApiRepository
+import com.mobdev.catgram.data.PostDeletionRequiresConnectionException
 import com.mobdev.catgram.data.UserPostsRepository
 import com.mobdev.catgram.ml.CatDetector
 import com.mobdev.catgram.network.BreedInfo
@@ -127,6 +128,7 @@ class FeedViewModelTest {
         every { mockApplication.getString(R.string.snackbar_post_created) } returns "Post created successfully!"
         every { mockApplication.getString(R.string.snackbar_post_create_failed) } returns "Failed to create post"
         every { mockApplication.getString(R.string.snackbar_post_delete_failed) } returns "Failed to delete post"
+        every { mockApplication.getString(R.string.snackbar_post_delete_offline) } returns "Connect to the internet to delete this post"
         every { mockApplication.getString(R.string.snackbar_load_data_failed) } returns "Failed to load data"
         every { mockApplication.getString(R.string.snackbar_check_date_time) } returns "Check date time"
 
@@ -435,6 +437,23 @@ class FeedViewModelTest {
         advanceUntilIdle()
 
         assertEquals("Failed to delete post", viewModel.snackbarMessage)
+        assertFalse(onSuccessCalled)
+    }
+
+    @Test
+    fun `deleteUserPost explains when a connection is required`() = runTest {
+        val viewModel = createViewModel()
+        advanceUntilIdle()
+        coEvery { userPostsRepository.deleteUserPost("post1") } throws
+            PostDeletionRequiresConnectionException(IllegalStateException("offline"))
+
+        var onSuccessCalled = false
+        viewModel.deleteUserPost("post1") {
+            onSuccessCalled = true
+        }
+        advanceUntilIdle()
+
+        assertEquals("Connect to the internet to delete this post", viewModel.snackbarMessage)
         assertFalse(onSuccessCalled)
     }
 

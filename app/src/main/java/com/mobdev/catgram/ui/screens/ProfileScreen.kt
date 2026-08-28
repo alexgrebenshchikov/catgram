@@ -1,7 +1,9 @@
 package com.mobdev.catgram.ui.screens
 
 import android.net.Uri
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Spacer
@@ -34,9 +36,11 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
-import coil.compose.AsyncImage
+import coil.compose.SubcomposeAsyncImage
+import coil.compose.SubcomposeAsyncImageContent
 import coil.request.ImageRequest
 import com.mobdev.catgram.R
+import com.mobdev.catgram.ui.common.shimmerEffect
 import com.mobdev.catgram.ui.theme.CatgramTheme
 
 
@@ -57,14 +61,29 @@ fun ProfileScreen(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
-        AsyncImage(
+        SubcomposeAsyncImage(
             model = ImageRequest.Builder(context = LocalContext.current)
                 .data(avatarUrl)
                 .build(),
             contentDescription = stringResource(R.string.cats_card),
             contentScale = ContentScale.Crop,
-            error = painterResource(R.drawable.ic_broken_image),
-            placeholder = painterResource(R.drawable.loading_img),
+            loading = {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .shimmerEffect(),
+                )
+            },
+            error = {
+                Image(
+                    painter = painterResource(R.drawable.ic_broken_image),
+                    contentDescription = null,
+                    modifier = Modifier.fillMaxSize(),
+                )
+            },
+            success = {
+                SubcomposeAsyncImageContent()
+            },
             modifier = Modifier
                 .size(150.dp)
                 .clip(CircleShape)

@@ -38,6 +38,7 @@
     <string name="snackbar_post_created">Post created successfully!</string>
     <string name="snackbar_post_create_failed">Failed to create post</string>
     <string name="snackbar_post_delete_failed">Failed to delete post</string>
+    <string name="snackbar_post_delete_offline">Connect to the internet to delete this post</string>
     <string name="feed_screen_label">Feed</string>
     <string name="favourites_screen_label">Favourites</string>
     <string name="profile_screen_label">Profile</string>

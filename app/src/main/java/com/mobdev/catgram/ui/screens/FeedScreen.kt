@@ -170,7 +170,7 @@ fun FeedScreen(
             onErrorItemClicked = { feedViewModel.loadDataPageIfNeeded(checkErrorState = false) },
             onPostDeleteClick = {
                 feedViewModel.deleteUserPost(it.id) {
-                    favViewModel.refreshData()
+                    favViewModel.onUserPostDeleted(it.id)
                 }
             },
             checkIsMyPostCallback = { userId -> feedViewModel.currentUser?.uid == userId },
@@ -202,7 +202,9 @@ fun FeedScreen(
                         filterChanged = false
                         bottomSheetOpened = true
                     }
-                }
+                },
+                containerColor = MaterialTheme.colorScheme.tertiary,
+                contentColor = MaterialTheme.colorScheme.onTertiary,
             ) {
                 Icon(
                     imageVector = Icons.Default.FilterList,
@@ -218,12 +220,15 @@ fun FeedScreen(
                         postText = ""
                         createPostSheetOpened = true
                     }
-                }
+                },
+                containerColor = MaterialTheme.colorScheme.tertiary,
+                contentColor = MaterialTheme.colorScheme.onTertiary,
             ) {
                 if (isCreatingPost) {
                     CircularProgressIndicator(
                         modifier = Modifier.size(24.dp),
-                        strokeWidth = 2.dp
+                        color = MaterialTheme.colorScheme.onTertiary,
+                        strokeWidth = 2.dp,
                     )
                 } else {
                     Icon(

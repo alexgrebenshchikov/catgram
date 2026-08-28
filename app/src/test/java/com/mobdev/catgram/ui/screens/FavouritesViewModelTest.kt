@@ -1,5 +1,6 @@
 package com.mobdev.catgram.ui.screens
 
+import com.google.firebase.firestore.FirebaseFirestoreException
 import com.mobdev.catgram.auth.AuthProvider
 import com.mobdev.catgram.coroutines.TestDispatcherProvider
 import com.mobdev.catgram.data.FavouritesRepository
@@ -136,7 +137,7 @@ class FavouritesViewModelTest {
     fun `unloaded favourite membership is fetched and cached`() = runTest(dispatcher) {
         every { authProvider.isSignedIn() } returns true
         coEvery { repository.fetchNextFavouritesPage(any()) } returns
-            FavouritesPage(emptyList(), hasMore = false)
+            FavouritesPage(listOf(secondItem), hasMore = true)
         coEvery { repository.isFavourite(item) } returns true
         val viewModel = createViewModel()
         advanceUntilIdle()
@@ -146,6 +147,64 @@ class FavouritesViewModelTest {
         assertTrue(viewModel.checkInFavourites(item))
 
         coVerify(exactly = 1) { repository.isFavourite(item) }
+    }
+
+    @Test
+    fun `fully loaded favourites do not query absent membership`() = runTest(dispatcher) {
+        every { authProvider.isSignedIn() } returns true
+        coEvery { repository.fetchNextFavouritesPage(any()) } returns
+            FavouritesPage(emptyList(), hasMore = false)
+        val viewModel = createViewModel()
+        advanceUntilIdle()
+
+        assertFalse(viewModel.checkInFavourites(item))
+        advanceUntilIdle()
+
+        coVerify(exactly = 0) { repository.isFavourite(any()) }
+    }
+
+    @Test
+    fun `offline membership failure is cached until refresh`() = runTest(dispatcher) {
+        every { authProvider.isSignedIn() } returns true
+        coEvery { repository.fetchNextFavouritesPage(any()) } returns
+            FavouritesPage(listOf(secondItem), hasMore = true)
+        coEvery { repository.isFavourite(item) } throws FirebaseFirestoreException(
+            "Client is offline",
+            FirebaseFirestoreException.Code.UNAVAILABLE,
+        )
+        val viewModel = createViewModel()
+        advanceUntilIdle()
+
+        assertFalse(viewModel.checkInFavourites(item))
+        advanceUntilIdle()
+        assertFalse(viewModel.checkInFavourites(item))
+        advanceUntilIdle()
+
+        coVerify(exactly = 1) { repository.isFavourite(item) }
+    }
+
+    @Test
+    fun `deleted user post is removed from favourites without refetching`() = runTest(dispatcher) {
+        val userPost = CatCardData.UserPost(
+            id = "post-1",
+            userId = "user-1",
+            url = "https://example.test/post.jpg",
+            text = "Cat",
+            displayName = "User",
+            avatarUrl = null,
+            timestamp = null,
+        )
+        every { authProvider.isSignedIn() } returns true
+        coEvery { repository.fetchNextFavouritesPage(any()) } returns
+            FavouritesPage(listOf(userPost), hasMore = false)
+        val viewModel = createViewModel()
+        advanceUntilIdle()
+
+        viewModel.onUserPostDeleted(userPost.id)
+
+        assertEquals(emptyList<CatCardData>(), viewModel.items)
+        assertFalse(viewModel.checkInFavourites(userPost))
+        coVerify(exactly = 1) { repository.fetchNextFavouritesPage(any()) }
     }
 
     private fun createViewModel() = FavouritesViewModel(

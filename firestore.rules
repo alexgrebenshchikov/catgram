@@ -454,11 +454,18 @@ service cloud.firestore {
 
         allow delete: if isOwner(uid)
           && (
-            !favouriteTargetExistsAfter(
-              resource.data.type,
-              resource.data.itemId
+            // A post-delete batch also cleans up this path when the owner did
+            // not favourite their own post. In that case there is no resource
+            // whose fields can be inspected, and the delete is a harmless
+            // no-op.
+            resource == null
+            || (
+              !favouriteTargetExistsAfter(
+                resource.data.type,
+                resource.data.itemId
+              )
+              || likeCounterWasDecremented(resource.data.itemId)
             )
-            || likeCounterWasDecremented(resource.data.itemId)
           );
       }
 
@@ -521,7 +528,12 @@ service cloud.firestore {
       // The Android client deletes a likes document in the same batch as its
       // corresponding owned user post.
       allow delete: if signedIn()
-        && deletingOwnedPost(itemId);
+        && (
+          // Deleting a missing counter is a harmless no-op. This keeps post
+          // deletion valid before a post has received its first like.
+          resource == null
+          || deletingOwnedPost(itemId)
+        );
     }
 
     match /cats_api/{catId} {

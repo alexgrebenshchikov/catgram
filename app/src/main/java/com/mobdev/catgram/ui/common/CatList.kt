@@ -4,18 +4,13 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.VectorConverter
-import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.calculatePan
 import androidx.compose.foundation.gestures.calculateZoom
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -55,23 +50,19 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.composed
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChanged
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
-import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
@@ -561,43 +552,6 @@ fun ZoomableImage(
                 SubcomposeAsyncImageContent()
             }
         )
-    }
-}
-
-private fun Modifier.shimmerEffect(): Modifier = composed {
-    var size by remember { mutableStateOf(IntSize.Zero) }
-    val transition = rememberInfiniteTransition(label = "shimmer")
-    val startOffsetX by transition.animateFloat(
-        initialValue = -2 * size.width.toFloat(),
-        targetValue = 2 * size.width.toFloat(),
-        animationSpec = infiniteRepeatable(
-            animation = tween(1000)
-        ),
-        label = "shimmer"
-    )
-
-    val shimmerColors = if (isSystemInDarkTheme()) {
-        listOf(
-            Color(0xFF3A3A3A),
-            Color(0xFF505050),
-            Color(0xFF3A3A3A),
-        )
-    } else {
-        listOf(
-            Color(0xFFE0E0E0),
-            Color(0xFFB0B0B0),
-            Color(0xFFE0E0E0),
-        )
-    }
-
-    background(
-        brush = Brush.linearGradient(
-            colors = shimmerColors,
-            start = Offset(startOffsetX, 0f),
-            end = Offset(startOffsetX + size.width.toFloat(), size.height.toFloat())
-        )
-    ).onGloballyPositioned {
-        size = it.size
     }
 }
 

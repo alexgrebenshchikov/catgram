@@ -37,6 +37,7 @@
     <string name="snackbar_post_created">Пост успешно создан!</string>
     <string name="snackbar_post_create_failed">Не удалось создать пост</string>
     <string name="snackbar_post_delete_failed">Не удалось удалить пост</string>
+    <string name="snackbar_post_delete_offline">Подключитесь к интернету, чтобы удалить пост</string>
     <string name="feed_screen_label">Лента</string>
     <string name="favourites_screen_label">Избранное</string>
     <string name="profile_screen_label">Профиль</string>

@@ -4,6 +4,7 @@ import android.content.Context
 import com.google.firebase.Timestamp
 import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FieldValue
+import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.Query
 import com.google.firebase.firestore.QuerySnapshot
 import com.google.firebase.firestore.ktx.firestore
@@ -28,6 +29,9 @@ interface UserPostsRepository {
     suspend fun hasNewPostsSince(timestampMillis: Long): Boolean
     fun reset()
 }
+
+class PostDeletionRequiresConnectionException(cause: Throwable) :
+    IllegalStateException("Post deletion requires an internet connection", cause)
 
 class FirebaseUserPostsRepository(
     private val authProvider: AuthProvider,
@@ -74,31 +78,38 @@ class FirebaseUserPostsRepository(
     }
 
     override suspend fun deleteUserPost(postId: String) {
-        val currentUser = authProvider.getCurrentUserOrThrow()
-        val postRef = userPostsColRef.document(postId)
-        val post = postRef.get().await().toObject(FirebaseUserPost::class.java)
-            ?: return
-        check(post.userId == currentUser.uid) { "Cannot delete another user's post" }
+        try {
+            val currentUser = authProvider.getCurrentUserOrThrow()
+            val postRef = userPostsColRef.document(postId)
+            val post = postRef.get().await().toObject(FirebaseUserPost::class.java)
+                ?: return
+            check(post.userId == currentUser.uid) { "Cannot delete another user's post" }
 
-        val comments = postRef.collection(COMMENTS)
-            .limit((MAX_COMMENTS_PER_POST_DELETE + 1).toLong())
-            .get()
-            .await()
-        check(comments.size() <= MAX_COMMENTS_PER_POST_DELETE) {
-            "Cannot safely delete a post with more than $MAX_COMMENTS_PER_POST_DELETE comments"
+            val comments = postRef.collection(COMMENTS)
+                .limit((MAX_COMMENTS_PER_POST_DELETE + 1).toLong())
+                .get()
+                .await()
+            check(comments.size() <= MAX_COMMENTS_PER_POST_DELETE) {
+                "Cannot safely delete a post with more than $MAX_COMMENTS_PER_POST_DELETE comments"
+            }
+
+            val batch = firestore.batch()
+            comments.documents.forEach { batch.delete(it.reference) }
+            batch.delete(postRef)
+            batch.delete(firestore.collection("likes").document(postId))
+            batch.delete(
+                firestore.collection("users")
+                    .document(currentUser.uid)
+                    .collection(FAVOURITES_SUBCOLLECTION)
+                    .document(favouriteDocumentId(postId, FavouriteItemType.USER_POST))
+            )
+            batch.commit().await()
+        } catch (e: FirebaseFirestoreException) {
+            if (e.code == FirebaseFirestoreException.Code.UNAVAILABLE) {
+                throw PostDeletionRequiresConnectionException(e)
+            }
+            throw e
         }
-
-        val batch = firestore.batch()
-        comments.documents.forEach { batch.delete(it.reference) }
-        batch.delete(postRef)
-        batch.delete(firestore.collection("likes").document(postId))
-        batch.delete(
-            firestore.collection("users")
-                .document(currentUser.uid)
-                .collection(FAVOURITES_SUBCOLLECTION)
-                .document(favouriteDocumentId(postId, FavouriteItemType.USER_POST))
-        )
-        batch.commit().await()
     }
 
     override fun reset() {
