@@ -60,4 +60,24 @@
     <string name="retry">Повторить</string>
     <string name="new_posts_notification_title">Новые посты с котиками!</string>
     <string name="new_posts_notification_text">Посмотрите новые публикации от сообщества</string>
+    <string name="activity_screen_label">События</string>
+    <string name="activity_screen_title">События</string>
+    <string name="activity_mark_all_read">Прочитать всё</string>
+    <string name="activity_empty">Событий пока нет</string>
+    <string name="activity_load_failed">Не удалось загрузить события</string>
+    <string name="activity_liked_post">%1$s понравился ваш пост</string>
+    <string name="activity_commented_post">%1$s прокомментировал ваш пост</string>
+    <string name="post_detail_title">Пост</string>
+    <string name="post_not_available">Этот пост больше недоступен</string>
+    <string name="post_load_failed">Не удалось загрузить пост</string>
+    <string name="back">Назад</string>
+    <string name="comments_action">Комментарии</string>
+    <string name="comments_heading">Комментарии (%1$d)</string>
+    <string name="comments_empty">Комментариев пока нет. Оставьте первый.</string>
+    <string name="comments_load_older">Загрузить ранние комментарии</string>
+    <string name="comment_hint">Добавить комментарий</string>
+    <string name="comment_send">Отправить комментарий</string>
+    <string name="comment_delete">Удалить комментарий</string>
+    <string name="activity_notification_channel_name">События поста</string>
+    <string name="activity_notification_channel_description">Отметки и комментарии к вашим постам</string>
 </resources>

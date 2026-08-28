@@ -77,9 +77,13 @@ private const val LOADING_OFFSET = 2
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun FeedScreen() {
+fun FeedScreen(
+    onPostClick: (String) -> Unit = {},
+    favouritesViewModel: FavouritesViewModel? = null,
+) {
     val feedViewModel: FeedViewModel = viewModel(factory = FeedViewModel.factory)
-    val favViewModel: FavouritesViewModel = viewModel(factory = FavouritesViewModel.factory)
+    val favViewModel: FavouritesViewModel =
+        favouritesViewModel ?: viewModel(factory = FavouritesViewModel.factory)
     val mainViewModel: MainViewModel = viewModel()
 
     val itemList = feedViewModel.items
@@ -170,6 +174,7 @@ fun FeedScreen() {
                 }
             },
             checkIsMyPostCallback = { userId -> feedViewModel.currentUser?.uid == userId },
+            onPostClick = onPostClick,
         )
 
         // Trigger loading of more data when we reach the end of the list

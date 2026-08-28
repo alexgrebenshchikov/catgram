@@ -35,6 +35,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.ModeComment
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -100,6 +101,7 @@ fun CatList(
     onErrorItemClicked: OnErrorItemClicked,
     onPostDeleteClick: OnPostDeleteCallback,
     checkIsMyPostCallback: CheckIsMyPostCallback,
+    onPostClick: ((String) -> Unit)? = null,
 ) {
     LazyColumn(
         state = listState,
@@ -123,7 +125,8 @@ fun CatList(
                     checkIsFavourite = checkIsFavourite,
                     checkIsEnabledCallback = checkIsEnabledCallback,
                     getLikesCount = getLikesCount,
-                    onPostDeleteCallback = onPostDeleteClick?.let { { it.invoke(item) } }
+                    onPostDeleteCallback = onPostDeleteClick?.let { { it.invoke(item) } },
+                    onCommentsClick = onPostClick?.let { { it(item.id) } },
                 )
             }
         }
@@ -210,7 +213,8 @@ fun UserPostCard(
     checkIsFavourite: CheckIsFavCallback,
     getLikesCount: GetLikesCountCallback?,
     onPostDeleteCallback: (() -> Unit)?,
-    checkIsEnabledCallback: CheckIsEnabledCallback
+    checkIsEnabledCallback: CheckIsEnabledCallback,
+    onCommentsClick: (() -> Unit)? = null,
 ) {
     val isActivated = checkIsFavourite(item)
     val isEnabled = checkIsEnabledCallback(item.id)
@@ -341,12 +345,29 @@ fun UserPostCard(
             )
         }
 
-        FavouritesButton(
-            isEnabled = isEnabled,
-            isActivated = isActivated,
-            onClick = { onFavClick(!isActivated, item) },
-            likesCounter = likesCounter
-        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            FavouritesButton(
+                isEnabled = isEnabled,
+                isActivated = isActivated,
+                onClick = { onFavClick(!isActivated, item) },
+                likesCounter = likesCounter,
+                modifier = Modifier,
+            )
+            onCommentsClick?.let { onClick ->
+                TextButton(onClick = onClick) {
+                    Icon(
+                        imageVector = Icons.Default.ModeComment,
+                        contentDescription = null,
+                        modifier = Modifier.size(20.dp),
+                    )
+                    Spacer(Modifier.width(6.dp))
+                    Text(stringResource(R.string.comments_action))
+                }
+            }
+        }
     }
 }
 
@@ -403,7 +424,8 @@ fun FavouritesButton(
     isEnabled: Boolean,
     isActivated: Boolean,
     likesCounter: Long?,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier.fillMaxWidth(),
 ) {
     val color by animateColorAsState(
         targetValue = if (isActivated) StarYellow else Color.Unspecified,
@@ -411,9 +433,7 @@ fun FavouritesButton(
     )
 
     Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 8.dp),
+        modifier = modifier.padding(horizontal = 8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         IconButton(

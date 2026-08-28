@@ -61,4 +61,24 @@
     <string name="retry">Retry</string>
     <string name="new_posts_notification_title">New cat posts!</string>
     <string name="new_posts_notification_text">Check out new posts from the community</string>
+    <string name="activity_screen_label">Activity</string>
+    <string name="activity_screen_title">Activity</string>
+    <string name="activity_mark_all_read">Mark all read</string>
+    <string name="activity_empty">No activity yet</string>
+    <string name="activity_load_failed">Unable to load activity</string>
+    <string name="activity_liked_post">%1$s liked your post</string>
+    <string name="activity_commented_post">%1$s commented on your post</string>
+    <string name="post_detail_title">Post</string>
+    <string name="post_not_available">This post is no longer available</string>
+    <string name="post_load_failed">Unable to load this post</string>
+    <string name="back">Back</string>
+    <string name="comments_action">Comments</string>
+    <string name="comments_heading">Comments (%1$d)</string>
+    <string name="comments_empty">No comments yet. Be the first to comment.</string>
+    <string name="comments_load_older">Load earlier comments</string>
+    <string name="comment_hint">Add a comment</string>
+    <string name="comment_send">Send comment</string>
+    <string name="comment_delete">Delete comment</string>
+    <string name="activity_notification_channel_name">Post activity</string>
+    <string name="activity_notification_channel_description">Likes and comments on your posts</string>
 </resources>

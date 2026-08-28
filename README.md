@@ -21,6 +21,9 @@ To keep the content relevant, the app uses AI-based image validation. When a use
 
 - Cat photo feed
 - Post creation flow
+- Post comments with real-time updates
+- Activity feed for likes and comments
+- Notification deep links to the relevant post
 - External Cats API integration
 - AI-based cat image validation
 - Jetpack Compose UI
@@ -53,4 +56,9 @@ To keep the content relevant, the app uses AI-based image validation. When a use
 - Favourites are migrated lazily from the legacy arrays in `users/{uid}` to `users/{uid}/favourites_v2/{type:itemId}`. The migration is idempotent and sets `favouritesSchemaVersion = 2` only after all documents are written.
 - Existing Firestore rules must allow each authenticated user to read and write only their own `favourites_v2` subcollection. Post ownership remains enforced by the existing `user_posts` rule.
 - Post images continue to be uploaded to ImgBB. Deleting a post removes its Firestore data but does not delete the ImgBB image.
-
+- Deploy `firestore.rules` and `firestore.indexes.json` before releasing the activity-enabled client.
+- Like and comment activity records are created atomically by the Android client. Firestore rules validate the authenticated actor, post owner, source favourite/comment, and deterministic activity ID.
+- Activity notifications are local notifications. A live Firestore listener handles them while the app process is running, and WorkManager performs best-effort background checks every 15 minutes. Instant server push is intentionally not used so the project can remain on the Firebase Spark plan.
+- Deleted posts remove their comments in retryable client-side batches before deleting the post and like counter. Other users' stale favourite references are removed lazily the next time those users load favourites.
+- Deploy only Firestore rules and indexes with `firebase deploy --only firestore:rules,firestore:indexes --project catgram-ce3db`; no Functions deployment is required.
+- Existing favourites are not backfilled into Activity. Only new user-post favourites marked with `source = USER_ACTION` generate a like event.

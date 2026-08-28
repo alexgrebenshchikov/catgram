@@ -5,6 +5,7 @@ import com.google.firebase.firestore.CollectionReference
 import com.google.firebase.firestore.DocumentReference
 import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FieldPath
+import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.Query
 import com.google.firebase.firestore.QuerySnapshot
 import com.google.firebase.firestore.SetOptions
@@ -97,6 +98,7 @@ class FirebaseFavouritesRepository(
     }
 
     override suspend fun addToFavourites(item: CatCardData): Long {
+        val actor = authProvider.getCurrentUserOrThrow()
         val type = item.favouriteType()
         val favouriteRef = favouritesColRef.document(favouriteDocumentId(item.id, type))
         val likesDocRef = likesColRef.document(item.id)
@@ -124,10 +126,37 @@ class FirebaseFavouritesRepository(
 
             transaction.set(
                 favouriteRef,
-                FirebaseFavouriteReference(item.id, type, System.currentTimeMillis()),
+                FirebaseFavouriteReference(
+                    itemId = item.id,
+                    type = type,
+                    createdAtMillis = System.currentTimeMillis(),
+                    source = FavouriteSource.USER_ACTION,
+                    createdAt = FieldValue.serverTimestamp(),
+                ),
             )
             val newCounter = currentCounter + 1
             transaction.set(likesDocRef, FirebaseLikesCounter(newCounter))
+
+            if (item is CatCardData.UserPost) {
+                val ownerUid = itemDoc.getString(USER_ID).orEmpty()
+                check(ownerUid.isNotBlank()) { "Post owner is missing" }
+                if (ownerUid == actor.uid) return@runTransaction newCounter
+                val activityRef = firestore.collection(USERS)
+                    .document(ownerUid)
+                    .collection(ACTIVITY)
+                    .document(likeActivityDocumentId(actor.uid, item.id))
+                transaction.set(
+                    activityRef,
+                    activityDocument(
+                        type = ActivityType.LIKE,
+                        actorUid = actor.uid,
+                        actorName = normalizedActivityName(actor.displayName),
+                        actorAvatarUrl = normalizedActivityUrl(actor.photoUrl?.toString()),
+                        postId = item.id,
+                        postPreviewUrl = normalizedActivityUrl(itemDoc.getString(URL)),
+                    ),
+                )
+            }
             newCounter
         }.await()
     }
@@ -169,9 +198,10 @@ class FirebaseFavouritesRepository(
                         favouriteDocumentId(item.id, FavouriteItemType.CATS_API),
                     ),
                     FirebaseFavouriteReference(
-                        item.id,
-                        FavouriteItemType.CATS_API,
-                        baseTime + order,
+                        itemId = item.id,
+                        type = FavouriteItemType.CATS_API,
+                        createdAtMillis = baseTime + order,
+                        source = FavouriteSource.MIGRATION,
                     ),
                     SetOptions.merge(),
                 )
@@ -185,7 +215,12 @@ class FirebaseFavouritesRepository(
                 val order = legacy.favourites.size + chunkIndex * MIGRATION_BATCH_SIZE + itemIndex
                 batch.set(
                     favouritesColRef.document(favouriteDocumentId(item.itemId, item.type)),
-                    FirebaseFavouriteReference(item.itemId, item.type, baseTime + order),
+                    FirebaseFavouriteReference(
+                        itemId = item.itemId,
+                        type = item.type,
+                        createdAtMillis = baseTime + order,
+                        source = FavouriteSource.MIGRATION,
+                    ),
                     SetOptions.merge(),
                 )
             }
@@ -273,6 +308,10 @@ class FirebaseFavouritesRepository(
         private const val CREATED_AT_MILLIS = "createdAtMillis"
         private const val MIGRATION_BATCH_SIZE = 200
         private const val FIRESTORE_QUERY_BATCH_SIZE = 10
+        private const val USER_ID = "userId"
+        private const val URL = "url"
+        private const val USERS = "users"
+        private const val ACTIVITY = "activity"
     }
 }
 
@@ -280,8 +319,10 @@ data class FirebaseFavouriteReference(
     val itemId: String = "",
     val type: FavouriteItemType = FavouriteItemType.CATS_API,
     val createdAtMillis: Long = 0,
+    val source: FavouriteSource? = null,
+    val createdAt: Any? = null,
 ) {
-    constructor() : this("", FavouriteItemType.CATS_API, 0)
+    constructor() : this("", FavouriteItemType.CATS_API, 0, null, null)
 }
 
 data class FirebaseFavourites(
@@ -301,6 +342,11 @@ data class FirebaseFavouriteId(
 enum class FavouriteItemType {
     CATS_API,
     USER_POST,
+}
+
+enum class FavouriteSource {
+    USER_ACTION,
+    MIGRATION,
 }
 
 data class FirebaseFavouriteCatsApi(

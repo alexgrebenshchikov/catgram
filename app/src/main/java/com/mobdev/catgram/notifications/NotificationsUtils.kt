@@ -11,12 +11,14 @@ import androidx.core.app.NotificationManagerCompat
 import com.mobdev.catgram.MainActivity
 import com.mobdev.catgram.R
 import com.mobdev.catgram.logging.logger
+import com.mobdev.catgram.ui.AppDeepLinks
 
 fun makeNotification(
     context: Context,
     title: String,
     message: String,
     params: NotificationParams,
+    target: NotificationTarget? = null,
 ): Boolean {
     return with(params) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -36,7 +38,7 @@ fun makeNotification(
             notificationManager?.createNotificationChannel(channel)
         }
 
-        val pendingIntent: PendingIntent = createPendingIntent(context)
+        val pendingIntent: PendingIntent = createPendingIntent(context, target, notificationId)
 
         val builder = NotificationCompat.Builder(context, channelId)
             .setSmallIcon(R.drawable.star_icon)
@@ -58,9 +60,19 @@ fun makeNotification(
     }
 }
 
-fun createPendingIntent(appContext: Context): PendingIntent {
+fun createPendingIntent(
+    appContext: Context,
+    target: NotificationTarget? = null,
+    requestCode: Int = DEFAULT_REQUEST_CODE,
+): PendingIntent {
     val intent = Intent(appContext, MainActivity::class.java).apply {
-        flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+        flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
+        target?.let {
+            action = Intent.ACTION_VIEW
+            data = AppDeepLinks.postUri(it.postId, it.activityId)
+            putExtra(AppDeepLinks.EXTRA_POST_ID, it.postId)
+            putExtra(AppDeepLinks.EXTRA_ACTIVITY_ID, it.activityId)
+        }
     }
 
     // Flag to detect unsafe launches of intents for Android 12 and higher
@@ -69,7 +81,7 @@ fun createPendingIntent(appContext: Context): PendingIntent {
 
     return PendingIntent.getActivity(
         appContext,
-        REQUEST_CODE,
+        requestCode,
         intent,
         flags
     )
@@ -82,4 +94,9 @@ data class NotificationParams(
     val notificationId: Int
 )
 
-private const val REQUEST_CODE = 0
+data class NotificationTarget(
+    val postId: String,
+    val activityId: String? = null,
+)
+
+private const val DEFAULT_REQUEST_CODE = 0

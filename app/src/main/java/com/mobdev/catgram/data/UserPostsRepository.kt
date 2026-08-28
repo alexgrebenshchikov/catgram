@@ -23,6 +23,7 @@ interface UserPostsRepository {
     ): List<CatsUserPostData>
 
     suspend fun addUserPost(url: String, text: String, context: Context)
+    suspend fun getUserPost(postId: String): CatsUserPostData?
     suspend fun deleteUserPost(postId: String)
     suspend fun hasNewPostsSince(timestampMillis: Long): Boolean
     fun reset()
@@ -66,6 +67,12 @@ class FirebaseUserPostsRepository(
         )
     }
 
+    override suspend fun getUserPost(postId: String): CatsUserPostData? {
+        val document = userPostsColRef.document(postId).get().await()
+        val post = document.toObject(FirebaseUserPost::class.java) ?: return null
+        return post.toCatsUserPostData(document.id)
+    }
+
     override suspend fun deleteUserPost(postId: String) {
         val currentUser = authProvider.getCurrentUserOrThrow()
         val postRef = userPostsColRef.document(postId)
@@ -73,7 +80,16 @@ class FirebaseUserPostsRepository(
             ?: return
         check(post.userId == currentUser.uid) { "Cannot delete another user's post" }
 
+        val comments = postRef.collection(COMMENTS)
+            .limit((MAX_COMMENTS_PER_POST_DELETE + 1).toLong())
+            .get()
+            .await()
+        check(comments.size() <= MAX_COMMENTS_PER_POST_DELETE) {
+            "Cannot safely delete a post with more than $MAX_COMMENTS_PER_POST_DELETE comments"
+        }
+
         val batch = firestore.batch()
+        comments.documents.forEach { batch.delete(it.reference) }
         batch.delete(postRef)
         batch.delete(firestore.collection("likes").document(postId))
         batch.delete(
@@ -158,22 +174,28 @@ class FirebaseUserPostsRepository(
 
     private fun QuerySnapshot.toCatsUserPostDataList(): List<CatsUserPostData> =
         toObjects(FirebaseUserPost::class.java).zip(documents).map { (post, doc) ->
-            CatsUserPostData(
-                doc.id,
-                post.userId,
-                post.url,
-                post.text,
-                post.displayName,
-                post.avatarUrl,
-                post.createdAt as? Timestamp
-            )
+            post.toCatsUserPostData(doc.id)
         }
+
+    private fun FirebaseUserPost.toCatsUserPostData(id: String) = CatsUserPostData(
+        id,
+        userId,
+        url,
+        text,
+        displayName,
+        avatarUrl,
+        createdAt as? Timestamp,
+    )
 
 
     companion object {
         private const val CREATED_AT = "createdAt"
         private const val USER_ID = "userId"
         private const val UNKNOWN_USER = "Unknown"
+        private const val COMMENTS = "comments"
+        // A Firestore batch supports 500 writes. Reserve three writes for the
+        // post, its likes counter, and the owner's favourite document.
+        private const val MAX_COMMENTS_PER_POST_DELETE = 497
     }
 }
 

@@ -24,8 +24,12 @@ private const val LOADING_OFFSET = 2
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun FavouritesScreen() {
-    val favViewModel: FavouritesViewModel = viewModel(factory = FavouritesViewModel.factory)
+fun FavouritesScreen(
+    favouritesViewModel: FavouritesViewModel? = null,
+    onPostClick: (String) -> Unit = {},
+) {
+    val favViewModel: FavouritesViewModel =
+        favouritesViewModel ?: viewModel(factory = FavouritesViewModel.factory)
     val itemList = favViewModel.items ?: listOf()
     val isLoading = favViewModel.isLoading && !favViewModel.isRefreshing
     val isError = false
@@ -65,7 +69,8 @@ fun FavouritesScreen() {
             getLikesCount = null,
             onErrorItemClicked = null,
             onPostDeleteClick = null,
-            checkIsMyPostCallback = { userId -> favViewModel.currentUser?.uid == userId }
+            checkIsMyPostCallback = { userId -> favViewModel.currentUser?.uid == userId },
+            onPostClick = onPostClick,
         )
 
         LaunchedEffect(listState) {

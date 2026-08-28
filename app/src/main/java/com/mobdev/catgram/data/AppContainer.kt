@@ -24,6 +24,8 @@ interface AppContainer {
     val catgramApiRepository: CatgramApiRepository
     val userPostsRepository: UserPostsRepository
     val favouritesRepository: FavouritesRepository
+    val commentsRepository: CommentsRepository
+    val activityRepository: ActivityRepository
     val imageUploader: ImageUploader
     val catDetector: CatDetector
     val authProvider: AuthProvider
@@ -65,7 +67,12 @@ class DefaultAppContainer(private val context: Context) : AppContainer {
     override val favouritesRepository: FavouritesRepository by lazy {
         FirebaseFavouritesRepository(authProvider)
     }
-
+    override val commentsRepository: CommentsRepository by lazy {
+        FirebaseCommentsRepository(authProvider, context)
+    }
+    override val activityRepository: ActivityRepository by lazy {
+        FirebaseActivityRepository(authProvider)
+    }
     override val imageUploader: ImageUploader by lazy {
         ImageUploader(imageUploadApiRetrofitService)
     }

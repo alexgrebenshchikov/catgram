@@ -57,6 +57,7 @@ class FavouritesViewModel(
     }
 
     fun initialize() {
+        if (hasLoadedInitialPage || isLoading) return
         favouritesRepository.initialize()
         fetchFavourites()
     }

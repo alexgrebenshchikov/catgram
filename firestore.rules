@@ -1,0 +1,537 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(uid) {
+      return signedIn() && request.auth.uid == uid;
+    }
+
+    function validFavourite(favouriteId) {
+      let data = request.resource.data;
+      let hasSource = data.keys().hasAny(['source']);
+      let hasCreatedAt = data.keys().hasAny(['createdAt']);
+
+      return data.keys().hasAll([
+          'itemId',
+          'type',
+          'createdAtMillis'
+        ])
+        && data.keys().hasOnly([
+          'itemId',
+          'type',
+          'createdAtMillis',
+          'source',
+          'createdAt'
+        ])
+        && data.itemId is string
+        && data.itemId.size() > 0
+        && data.type is string
+        && data.createdAtMillis is int
+        && data.createdAtMillis >= 0
+        && (
+          data.type == 'CATS_API'
+          || data.type == 'USER_POST'
+        )
+        && favouriteId == data.type + ':' + data.itemId
+        && (
+          !hasSource
+          || data.source == 'USER_ACTION'
+          || data.source == 'MIGRATION'
+        )
+        && (
+          !hasCreatedAt
+          || data.createdAt == null
+          || data.createdAt is timestamp
+        );
+    }
+
+    function likeCounterWasIncremented(itemId) {
+      let likesPath = /databases/$(database)/documents/likes/$(itemId);
+
+      return existsAfter(likesPath)
+        && (
+          (
+            !exists(likesPath)
+            && getAfter(likesPath).data.counter == 1
+          )
+          || (
+            exists(likesPath)
+            && get(likesPath).data.counter is int
+            && getAfter(likesPath).data.counter
+              == get(likesPath).data.counter + 1
+          )
+        );
+    }
+
+    function likeCounterWasDecremented(itemId) {
+      let likesPath = /databases/$(database)/documents/likes/$(itemId);
+
+      return existsAfter(likesPath)
+        && (
+          (
+            !exists(likesPath)
+            && getAfter(likesPath).data.counter == 0
+          )
+          || (
+            exists(likesPath)
+            && get(likesPath).data.counter is int
+            && getAfter(likesPath).data.counter is int
+            && (
+              (
+                get(likesPath).data.counter > 0
+                && getAfter(likesPath).data.counter
+                  == get(likesPath).data.counter - 1
+              )
+              || (
+                get(likesPath).data.counter == 0
+                && getAfter(likesPath).data.counter == 0
+              )
+            )
+          )
+        );
+    }
+
+    function favouriteTargetExistsAfter(type, itemId) {
+      let catPath = /databases/$(database)/documents/cats_api/$(itemId);
+      let postPath = /databases/$(database)/documents/user_posts/$(itemId);
+
+      return (
+          type == 'CATS_API'
+          && existsAfter(catPath)
+        )
+        || (
+          type == 'USER_POST'
+          && existsAfter(postPath)
+        );
+    }
+
+    function validFavouriteCreate(favouriteId) {
+      let data = request.resource.data;
+      let hasSource = data.keys().hasAny(['source']);
+      let isUserAction = hasSource && data.source == 'USER_ACTION';
+
+      return validFavourite(favouriteId)
+        && (
+          !isUserAction
+          || (
+            data.keys().hasAny(['createdAt'])
+            && data.createdAt == request.time
+            && likeCounterWasIncremented(data.itemId)
+          )
+        );
+    }
+
+    function validCatApi(catId) {
+      let data = request.resource.data;
+
+      return data.keys().hasAll([
+          'id',
+          'url',
+          'breeds'
+        ])
+        && data.keys().hasOnly([
+          'id',
+          'url',
+          'breeds'
+        ])
+        && data.id is string
+        && data.id == catId
+        && data.url is string
+        && data.breeds is list;
+    }
+
+    function validUserPost() {
+      let data = request.resource.data;
+      let hasAvatarUrl = data.keys().hasAny(['avatarUrl']);
+
+      return data.keys().hasAll([
+          'userId',
+          'url',
+          'text',
+          'displayName',
+          'createdAt'
+        ])
+        && data.keys().hasOnly([
+          'userId',
+          'url',
+          'text',
+          'displayName',
+          'avatarUrl',
+          'createdAt'
+        ])
+        && data.userId is string
+        && data.url is string
+        && data.url.size() > 0
+        && data.url.size() <= 2048
+        && data.text is string
+        && data.displayName is string
+        && data.displayName.size() > 0
+        && data.displayName.size() <= 100
+        && (
+          !hasAvatarUrl
+          || data.avatarUrl == null
+          || (
+            data.avatarUrl is string
+            && data.avatarUrl.size() <= 2048
+          )
+        )
+        && data.createdAt is timestamp;
+    }
+
+    function validComment() {
+      let data = request.resource.data;
+      let hasAvatarUrl = data.keys().hasAny(['authorAvatarUrl']);
+
+      return data.keys().hasAll([
+          'authorUid',
+          'authorName',
+          'text',
+          'createdAt'
+        ])
+        && data.keys().hasOnly([
+          'authorUid',
+          'authorName',
+          'authorAvatarUrl',
+          'text',
+          'createdAt'
+        ])
+        && data.authorUid == request.auth.uid
+        && data.authorName is string
+        && data.authorName.size() > 0
+        && data.authorName.size() <= 100
+        && (
+          !hasAvatarUrl
+          || data.authorAvatarUrl == null
+          || (
+            data.authorAvatarUrl is string
+            && data.authorAvatarUrl.size() <= 2048
+          )
+        )
+        && data.text is string
+        && data.text.size() > 0
+        && data.text.size() <= 500
+        && data.createdAt == request.time;
+    }
+
+    function validActivity() {
+      let data = request.resource.data;
+
+      return data.keys().hasAll([
+          'type',
+          'actorUid',
+          'actorName',
+          'actorAvatarUrl',
+          'postId',
+          'postPreviewUrl',
+          'commentId',
+          'commentText',
+          'createdAt',
+          'readAt'
+        ])
+        && data.keys().hasOnly([
+          'type',
+          'actorUid',
+          'actorName',
+          'actorAvatarUrl',
+          'postId',
+          'postPreviewUrl',
+          'commentId',
+          'commentText',
+          'createdAt',
+          'readAt'
+        ])
+        && (
+          data.type == 'LIKE'
+          || data.type == 'COMMENT'
+        )
+        && data.actorUid is string
+        && data.actorUid.size() > 0
+        && data.actorName is string
+        && data.actorName.size() > 0
+        && data.actorName.size() <= 100
+        && (
+          data.actorAvatarUrl == null
+          || (
+            data.actorAvatarUrl is string
+            && data.actorAvatarUrl.size() <= 2048
+          )
+        )
+        && data.postId is string
+        && data.postId.size() > 0
+        && (
+          data.postPreviewUrl == null
+          || (
+            data.postPreviewUrl is string
+            && data.postPreviewUrl.size() <= 2048
+          )
+        )
+        && (
+          data.commentId == null
+          || data.commentId is string
+        )
+        && (
+          data.commentText == null
+          || (
+            data.commentText is string
+            && data.commentText.size() <= 500
+          )
+        )
+        && data.createdAt == request.time
+        && data.readAt == null;
+    }
+
+    function validLikeActivity(ownerUid, activityId) {
+      let data = request.resource.data;
+      let postPath = /databases/$(database)/documents/user_posts/$(data.postId);
+      let favouriteId = 'USER_POST:' + data.postId;
+      let favouritePath = /databases/$(database)/documents/users/$(request.auth.uid)/favourites_v2/$(favouriteId);
+
+      return validActivity()
+        && data.type == 'LIKE'
+        && data.actorUid == request.auth.uid
+        && ownerUid != request.auth.uid
+        && activityId == 'like:' + request.auth.uid + ':' + data.postId
+        && data.commentId == null
+        && data.commentText == null
+        && exists(postPath)
+        && get(postPath).data.userId == ownerUid
+        && data.postPreviewUrl == get(postPath).data.url
+        && !exists(favouritePath)
+        && existsAfter(favouritePath)
+        && getAfter(favouritePath).data.itemId == data.postId
+        && getAfter(favouritePath).data.type == 'USER_POST'
+        && getAfter(favouritePath).data.source == 'USER_ACTION';
+    }
+
+    function validCommentActivity(ownerUid, activityId) {
+      let data = request.resource.data;
+      let postPath = /databases/$(database)/documents/user_posts/$(data.postId);
+      let commentPath = /databases/$(database)/documents/user_posts/$(data.postId)/comments/$(data.commentId);
+
+      return validActivity()
+        && data.type == 'COMMENT'
+        && data.actorUid == request.auth.uid
+        && ownerUid != request.auth.uid
+        && data.commentId is string
+        && data.commentId.size() > 0
+        && data.commentText is string
+        && data.commentText.size() > 0
+        && activityId == 'comment:' + data.postId + ':' + data.commentId
+        && exists(postPath)
+        && get(postPath).data.userId == ownerUid
+        && data.postPreviewUrl == get(postPath).data.url
+        && !exists(commentPath)
+        && existsAfter(commentPath)
+        && getAfter(commentPath).data.authorUid == request.auth.uid
+        && data.actorName == getAfter(commentPath).data.authorName
+        && data.actorAvatarUrl == getAfter(commentPath).data.authorAvatarUrl
+        && data.commentText == getAfter(commentPath).data.text;
+    }
+
+    function validClientActivity(ownerUid, activityId) {
+      let data = request.resource.data;
+
+      return (
+          data.type == 'LIKE'
+          && validLikeActivity(ownerUid, activityId)
+        )
+        || (
+          data.type == 'COMMENT'
+          && validCommentActivity(ownerUid, activityId)
+        );
+    }
+
+    function validLikesCounter() {
+      let data = request.resource.data;
+
+      return data.keys().hasOnly(['counter'])
+        && data.counter is int
+        && data.counter >= 0;
+    }
+
+    function favouriteWasAdded(itemId) {
+      let catFavouriteId = 'CATS_API:' + itemId;
+      let postFavouriteId = 'USER_POST:' + itemId;
+      let catPath = /databases/$(database)/documents/users/$(request.auth.uid)/favourites_v2/$(catFavouriteId);
+      let postPath = /databases/$(database)/documents/users/$(request.auth.uid)/favourites_v2/$(postFavouriteId);
+
+      return (
+          !exists(catPath)
+          && existsAfter(catPath)
+        )
+        || (
+          !exists(postPath)
+          && existsAfter(postPath)
+        );
+    }
+
+    function favouriteWasRemoved(itemId) {
+      let catFavouriteId = 'CATS_API:' + itemId;
+      let postFavouriteId = 'USER_POST:' + itemId;
+      let catPath = /databases/$(database)/documents/users/$(request.auth.uid)/favourites_v2/$(catFavouriteId);
+      let postPath = /databases/$(database)/documents/users/$(request.auth.uid)/favourites_v2/$(postFavouriteId);
+
+      return (
+          exists(catPath)
+          && !existsAfter(catPath)
+        )
+        || (
+          exists(postPath)
+          && !existsAfter(postPath)
+        );
+    }
+
+    function deletingOwnedPost(itemId) {
+      let postPath = /databases/$(database)/documents/user_posts/$(itemId);
+
+      return exists(postPath)
+        && get(postPath).data.userId == request.auth.uid
+        && !existsAfter(postPath);
+    }
+
+    match /user_posts/{postId} {
+      allow read: if signedIn();
+
+      allow create: if signedIn()
+        && validUserPost()
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.createdAt == request.time;
+
+      // Preserve the existing owner-update behavior while keeping identity and
+      // creation time immutable.
+      allow update: if signedIn()
+        && validUserPost()
+        && resource.data.userId == request.auth.uid
+        && request.resource.data.userId == resource.data.userId
+        && request.resource.data.createdAt == resource.data.createdAt;
+
+      allow delete: if signedIn()
+        && resource.data.userId == request.auth.uid;
+
+      match /comments/{commentId} {
+        allow read: if signedIn();
+
+        allow create: if signedIn()
+          && exists(/databases/$(database)/documents/user_posts/$(postId))
+          && validComment();
+
+        allow update: if false;
+
+        allow delete: if signedIn()
+          && (
+            resource.data.authorUid == request.auth.uid
+            || (
+              exists(/databases/$(database)/documents/user_posts/$(postId))
+              && get(/databases/$(database)/documents/user_posts/$(postId)).data.userId
+                == request.auth.uid
+              && !existsAfter(
+                /databases/$(database)/documents/user_posts/$(postId)
+              )
+            )
+          );
+      }
+    }
+
+    match /users/{uid} {
+      // Preserve the existing owner access to the user document itself.
+      allow read, write: if isOwner(uid);
+
+      match /favourites_v2/{favouriteId} {
+        allow read: if isOwner(uid);
+
+        allow create: if isOwner(uid)
+          && validFavouriteCreate(favouriteId);
+
+        // Merge writes are required by the legacy favourites migration.
+        allow update: if isOwner(uid)
+          && validFavourite(favouriteId)
+          && request.resource.data.itemId == resource.data.itemId
+          && request.resource.data.type == resource.data.type;
+
+        allow delete: if isOwner(uid)
+          && (
+            !favouriteTargetExistsAfter(
+              resource.data.type,
+              resource.data.itemId
+            )
+            || likeCounterWasDecremented(resource.data.itemId)
+          );
+      }
+
+      match /activity/{activityId} {
+        allow read: if isOwner(uid);
+        allow create: if signedIn()
+          && validClientActivity(uid, activityId);
+
+        allow delete: if false;
+
+        allow update: if (
+            isOwner(uid)
+            && request.resource.data.diff(resource.data).affectedKeys()
+              .hasOnly(['readAt'])
+            && request.resource.data.readAt == request.time
+          )
+          || (
+            signedIn()
+            && validLikeActivity(uid, activityId)
+          );
+      }
+    }
+
+    match /likes/{itemId} {
+      allow read: if signedIn();
+
+      allow create: if signedIn()
+        && validLikesCounter()
+        && (
+          (
+            request.resource.data.counter == 1
+            && favouriteWasAdded(itemId)
+          )
+          || (
+            request.resource.data.counter == 0
+            && favouriteWasRemoved(itemId)
+          )
+        );
+
+      allow update: if signedIn()
+        && validLikesCounter()
+        && resource.data.counter is int
+        && (
+          (
+            request.resource.data.counter == resource.data.counter + 1
+            && favouriteWasAdded(itemId)
+          )
+          || (
+            resource.data.counter > 0
+            && request.resource.data.counter == resource.data.counter - 1
+            && favouriteWasRemoved(itemId)
+          )
+          || (
+            resource.data.counter == 0
+            && request.resource.data.counter == 0
+            && favouriteWasRemoved(itemId)
+          )
+        );
+
+      // The Android client deletes a likes document in the same batch as its
+      // corresponding owned user post.
+      allow delete: if signedIn()
+        && deletingOwnedPost(itemId);
+    }
+
+    match /cats_api/{catId} {
+      allow read: if signedIn();
+
+      // Update is required because the legacy migration uses merge writes.
+      allow create, update: if signedIn()
+        && validCatApi(catId);
+
+      allow delete: if false;
+    }
+  }
+}

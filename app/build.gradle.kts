@@ -103,6 +103,7 @@ dependencies {
     implementation(libs.androidx.credentials.play.services.auth)
     implementation(libs.googleid)
     implementation(libs.androidx.lifecycle.viewmodel.compose)
+    implementation(libs.androidx.navigation.compose)
     // Retrofit
     implementation(libs.retrofit)
 
@@ -120,7 +121,6 @@ dependencies {
     implementation(libs.androidx.datastore)
     implementation(libs.androidx.datastore.preferences)
 
-    implementation(libs.firebase.messaging.ktx)
     implementation(libs.androidx.work.runtime.ktx)
     implementation(libs.guava)
 

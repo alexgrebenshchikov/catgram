@@ -3,7 +3,7 @@ package com.mobdev.catgram.logging
 import android.util.Log
 import com.mobdev.catgram.BuildConfig
 
-val logger: CatgramLogger = CatgramLoggerImpl()
+val logger: CatgramLogger = if (BuildConfig.DEBUG) CatgramLoggerStub() else CatgramLoggerImpl()
 
 interface CatgramLogger {
     fun d(message: String)

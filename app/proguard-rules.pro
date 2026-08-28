@@ -51,3 +51,6 @@
 -keep class com.mobdev.catgram.data.FirebaseBreedInfo { *; }
 -keep class com.mobdev.catgram.data.FirebaseLikesCounter { *; }
 -keep class com.mobdev.catgram.data.FavouriteItemType { *; }
+-keep class com.mobdev.catgram.data.FirebaseComment { *; }
+-keep class com.mobdev.catgram.data.FirebaseActivity { *; }
+-keep class com.mobdev.catgram.data.ActivityType { *; }
