@@ -1,6 +1,7 @@
 package com.mobdev.catgram.ui.screens
 
 import com.mobdev.catgram.data.Comment
+import com.mobdev.catgram.data.CommentsPage
 import com.mobdev.catgram.data.CommentsRepository
 import com.mobdev.catgram.data.UserPostsRepository
 import com.mobdev.catgram.network.CatsData.CatsUserPostData
@@ -20,6 +21,7 @@ import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 
@@ -106,4 +108,45 @@ class PostDetailViewModelTest {
 
         coVerify(exactly = 0) { commentsRepository.deleteComment(any(), any()) }
     }
+
+    @Test
+    fun `new live comment does not drop the loaded page boundary`() = runTest(dispatcher) {
+        coEvery { postsRepository.getUserPost("post-1") } returns CatsUserPostData(
+            id = "post-1",
+            userId = "owner",
+            url = "https://example.test/cat.jpg",
+            text = "Cat",
+            displayName = "Owner",
+            avatarUrl = null,
+            timestamp = null,
+        )
+        val allComments = (1L..101L).map(::comment)
+        every {
+            commentsRepository.observeComments("post-1", 50, null)
+        } returns flowOf(allComments.subList(50, 100))
+        coEvery {
+            commentsRepository.getOlderComments("post-1", any(), 50)
+        } returns CommentsPage(allComments.subList(0, 50), hasMore = false)
+        every {
+            commentsRepository.observeComments("post-1", 50, any())
+        } returns flowOf(allComments)
+
+        val viewModel = PostDetailViewModel("post-1", postsRepository, commentsRepository)
+        advanceUntilIdle()
+        viewModel.loadOlderComments()
+        advanceUntilIdle()
+
+        assertEquals(101, viewModel.comments.size)
+        assertTrue(viewModel.comments.any { it.id == "comment-51" })
+    }
+
+    private fun comment(index: Long) = Comment(
+        id = "comment-$index",
+        postId = "post-1",
+        authorUid = "author",
+        authorName = "Author",
+        authorAvatarUrl = null,
+        text = "Comment $index",
+        createdAt = com.google.firebase.Timestamp(index, 0),
+    )
 }

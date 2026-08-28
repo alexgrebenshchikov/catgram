@@ -21,6 +21,7 @@ import com.mobdev.catgram.network.ImageUploadResult
 import com.mobdev.catgram.network.ImageUploader
 import com.mobdev.catgram.ui.common.CatCardData
 import io.mockk.*
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -455,6 +456,25 @@ class FeedViewModelTest {
 
         assertEquals("Connect to the internet to delete this post", viewModel.snackbarMessage)
         assertFalse(onSuccessCalled)
+    }
+
+    @Test
+    fun `deleteUserPost ignores a duplicate request while deletion is running`() = runTest {
+        val viewModel = createViewModel()
+        advanceUntilIdle()
+        val finishDeletion = CompletableDeferred<Unit>()
+        coEvery { userPostsRepository.deleteUserPost("post1") } coAnswers {
+            finishDeletion.await()
+        }
+
+        viewModel.deleteUserPost("post1") {}
+        runCurrent()
+        viewModel.deleteUserPost("post1") {}
+        runCurrent()
+
+        coVerify(exactly = 1) { userPostsRepository.deleteUserPost("post1") }
+        finishDeletion.complete(Unit)
+        advanceUntilIdle()
     }
 
     // ============ updateChoosedBreeds Tests ============

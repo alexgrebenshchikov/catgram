@@ -114,7 +114,10 @@ fun ProfileScreen(
             contentPadding = PaddingValues(horizontal = 24.dp, vertical = 12.dp),
             modifier = Modifier.fillMaxWidth(0.5f)
         ) {
-            Text(text = stringResource(R.string.sign_out_button_text), color = Color.White)
+            Text(
+                text = stringResource(R.string.sign_out_button_text),
+                color = MaterialTheme.colorScheme.onPrimary,
+            )
         }
 
         if (showSignOutDialog) {

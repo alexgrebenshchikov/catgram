@@ -10,12 +10,16 @@ import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.google.firebase.Timestamp
+import com.mobdev.catgram.data.ActivityCursor
 import com.mobdev.catgram.CatgramApplication
 import com.mobdev.catgram.data.ActivityItem
 import com.mobdev.catgram.data.ActivityRepository
+import com.mobdev.catgram.data.cursorOrNull
 import com.mobdev.catgram.logging.logger
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 
 class ActivityViewModel(
@@ -38,6 +42,8 @@ class ActivityViewModel(
     private var latestItems: List<ActivityItem> = emptyList()
     private var olderItems: List<ActivityItem> = emptyList()
     private val pendingReadIds = mutableSetOf<String>()
+    private val activityRangeStart = MutableStateFlow<ActivityCursor?>(null)
+    private var isMarkingAllRead = false
 
     fun initialize() {
         if (observeJob?.isActive == true) return
@@ -45,12 +51,29 @@ class ActivityViewModel(
             isLoading = true
             isError = false
             try {
-                activityRepository.observeActivity().collect {
-                    removeConfirmedPendingReads(it)
-                    latestItems = it
-                    if (olderItems.isEmpty()) hasMore = it.size >= PAGE_SIZE
-                    rebuildItems()
-                    isLoading = false
+                try {
+                    activityRepository.redactLegacyCommentBodies()
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Throwable) {
+                    // Redaction is idempotent and will be retried next time.
+                    logger.e("Legacy activity redaction failed: ${e.message}", e)
+                }
+                activityRangeStart.collectLatest { rangeStart ->
+                    activityRepository.observeActivity(
+                        limit = PAGE_SIZE.toLong(),
+                        fromInclusive = rangeStart,
+                    ).collect { snapshot ->
+                        removeConfirmedPendingReads(snapshot)
+                        latestItems = snapshot
+                        if (rangeStart == null) {
+                            hasMore = snapshot.size >= PAGE_SIZE
+                        } else {
+                            olderItems = emptyList()
+                        }
+                        rebuildItems()
+                        isLoading = false
+                    }
                 }
             } catch (e: CancellationException) {
                 throw e
@@ -64,15 +87,19 @@ class ActivityViewModel(
 
     fun loadMore() {
         if (isLoadingMore || !hasMore) return
-        val oldestTimestamp = items.lastOrNull()?.createdAt ?: return
+        val oldestCursor = items.asReversed()
+            .firstNotNullOfOrNull(ActivityItem::cursorOrNull) ?: return
         viewModelScope.launch {
             isLoadingMore = true
             try {
-                val page = activityRepository.getOlderActivity(oldestTimestamp, PAGE_SIZE.toLong())
+                val page = activityRepository.getOlderActivity(oldestCursor, PAGE_SIZE.toLong())
                 removeConfirmedPendingReads(page.items)
                 olderItems = (olderItems + page.items).distinctBy(ActivityItem::id)
                 hasMore = page.hasMore
                 rebuildItems()
+                items.asReversed().firstNotNullOfOrNull(ActivityItem::cursorOrNull)?.let {
+                    activityRangeStart.value = it
+                }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Throwable) {
@@ -108,6 +135,7 @@ class ActivityViewModel(
     }
 
     fun markAllRead() {
+        if (isMarkingAllRead) return
         val newlyPendingIds = (latestItems + olderItems)
             .asSequence()
             .filter(ActivityItem::isUnread)
@@ -116,6 +144,7 @@ class ActivityViewModel(
             .toSet()
         pendingReadIds += newlyPendingIds
         rebuildItems()
+        isMarkingAllRead = true
         viewModelScope.launch {
             try {
                 activityRepository.markAllRead()
@@ -127,6 +156,8 @@ class ActivityViewModel(
                 pendingReadIds.removeAll(newlyPendingIds)
                 rebuildItems()
                 logger.e("mark all activity read failed: ${e.message}", e)
+            } finally {
+                isMarkingAllRead = false
             }
         }
     }
@@ -138,6 +169,8 @@ class ActivityViewModel(
         latestItems = emptyList()
         olderItems = emptyList()
         pendingReadIds.clear()
+        activityRangeStart.value = null
+        isMarkingAllRead = false
         isLoading = false
         isLoadingMore = false
         hasMore = false
@@ -155,7 +188,11 @@ class ActivityViewModel(
                     item
                 }
             }
-            .sortedByDescending { it.createdAt?.toDate()?.time ?: Long.MIN_VALUE }
+            .sortedWith(
+                compareByDescending<ActivityItem> { it.createdAt?.seconds ?: Long.MIN_VALUE }
+                    .thenByDescending { it.createdAt?.nanoseconds ?: Int.MIN_VALUE }
+                    .thenByDescending(ActivityItem::id),
+            )
     }
 
     private fun removeConfirmedPendingReads(serverItems: List<ActivityItem>) {

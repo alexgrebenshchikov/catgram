@@ -14,11 +14,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.unit.IntSize
 
-fun Modifier.shimmerEffect(): Modifier = composed {
+fun Modifier.shimmerEffect(baseColor: Color = Color.Unspecified): Modifier = composed {
     var size by remember { mutableStateOf(IntSize.Zero) }
     val transition = rememberInfiniteTransition(label = "shimmer")
     val startOffsetX by transition.animateFloat(
@@ -29,16 +30,18 @@ fun Modifier.shimmerEffect(): Modifier = composed {
         ),
         label = "shimmerOffset",
     )
-    val calicoGreenBase = MaterialTheme.colorScheme.tertiaryContainer
-    val calicoGreenHighlight = lerp(
-        start = calicoGreenBase,
-        stop = MaterialTheme.colorScheme.tertiary,
-        fraction = 0.35f,
+    val cardBackground = if (baseColor == Color.Unspecified) {
+        MaterialTheme.colorScheme.surfaceContainerHighest
+    } else baseColor
+    val highlight = lerp(
+        start = cardBackground,
+        stop = MaterialTheme.colorScheme.onSurface,
+        fraction = 0.08f,
     )
     val shimmerColors = listOf(
-        calicoGreenBase,
-        calicoGreenHighlight,
-        calicoGreenBase,
+        cardBackground,
+        highlight,
+        cardBackground,
     )
 
     background(

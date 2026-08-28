@@ -5,13 +5,18 @@ import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
-import androidx.datastore.preferences.core.stringSetPreferencesKey
+import androidx.datastore.preferences.core.intPreferencesKey
+import androidx.datastore.preferences.core.longPreferencesKey
+import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import com.google.firebase.Timestamp
 import com.mobdev.catgram.R
 import com.mobdev.catgram.auth.AuthProvider
+import com.mobdev.catgram.data.ActivityCursor
 import com.mobdev.catgram.data.ActivityItem
 import com.mobdev.catgram.data.ActivityRepository
 import com.mobdev.catgram.data.ActivityType
+import com.mobdev.catgram.data.cursorOrNull
 import com.mobdev.catgram.logging.logger
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -38,7 +43,15 @@ class ActivityNotificationCoordinator(
         observeJob = scope.launch {
             try {
                 activityRepository.observeActivity(ACTIVITY_NOTIFICATION_PAGE_SIZE).collect {
-                    notifyUnseenActivity(context, uid, it)
+                    try {
+                        notifyPendingActivity(context, uid, activityRepository)
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Throwable) {
+                        // Keep the live listener active; the next snapshot or
+                        // periodic worker run will retry from the same cursor.
+                        logger.e("Activity notification delivery failed: ${e.message}", e)
+                    }
                 }
             } catch (e: CancellationException) {
                 throw e
@@ -54,14 +67,44 @@ class ActivityNotificationCoordinator(
     }
 }
 
-suspend fun notifyUnseenActivity(
+suspend fun notifyPendingActivity(
     context: Context,
     uid: String,
-    items: List<ActivityItem>,
-): Int {
-    val newItems = ActivityNotificationTracker.claim(context, uid, items)
-    newItems.forEach { item -> showActivityNotification(context, item) }
-    return newItems.size
+    activityRepository: ActivityRepository,
+): Int = notificationDeliveryMutex.withLock {
+    val initialState = ActivityNotificationTracker.read(context, uid)
+    if (!initialState.initialized) {
+        val latestCursor = activityRepository.getRecentActivity(1)
+            .firstOrNull()
+            ?.cursorOrNull()
+        ActivityNotificationTracker.initialize(context, uid, latestCursor)
+        return@withLock 0
+    }
+
+    var cursor = initialState.cursor
+    var delivered = 0
+    var hasMore = true
+    while (hasMore) {
+        val page = activityRepository.getNewerActivity(
+            after = cursor,
+            limit = ACTIVITY_NOTIFICATION_PAGE_SIZE,
+        )
+        if (page.items.isEmpty()) return@withLock delivered
+
+        for (item in page.items) {
+            val itemCursor = item.cursorOrNull() ?: continue
+            if (!showActivityNotification(context, item)) {
+                // Leave the cursor before this item so a later worker run can retry.
+                return@withLock delivered
+            }
+            ActivityNotificationTracker.advance(context, uid, itemCursor)
+            cursor = itemCursor
+            delivered += 1
+        }
+
+        hasMore = page.hasMore
+    }
+    delivered
 }
 
 private fun showActivityNotification(context: Context, item: ActivityItem): Boolean {
@@ -86,47 +129,56 @@ private fun showActivityNotification(context: Context, item: ActivityItem): Bool
     )
 }
 
+private val notificationDeliveryMutex = Mutex()
+
+private data class ActivityNotificationState(
+    val initialized: Boolean,
+    val cursor: ActivityCursor?,
+)
+
 private object ActivityNotificationTracker {
-    private const val MAX_TRACKED_EVENTS = 200
-    private val mutex = Mutex()
-
-    suspend fun claim(
-        context: Context,
-        uid: String,
-        items: List<ActivityItem>,
-    ): List<ActivityItem> = mutex.withLock {
-        val timestampedItems = items
-            .filter { it.createdAt != null }
-            .sortedBy { it.createdAt?.toDate()?.time }
-        val currentTokens = timestampedItems.map { it.notificationToken() }.toSet()
-        val initializedKey = booleanPreferencesKey("initialized_$uid")
-        val eventsKey = stringSetPreferencesKey("events_$uid")
+    suspend fun read(context: Context, uid: String): ActivityNotificationState {
         val preferences = context.activityNotificationDataStore.data.first()
-        val wasInitialized = preferences[initializedKey] == true
-        val previousTokens = preferences[eventsKey].orEmpty()
-        val newItems = if (wasInitialized) {
-            timestampedItems.filter { it.notificationToken() !in previousTokens }
-        } else {
-            emptyList()
-        }
+        val seconds = preferences[cursorSecondsKey(uid)]
+        val nanoseconds = preferences[cursorNanosecondsKey(uid)]
+        val id = preferences[cursorIdKey(uid)]
+        val cursor = if (seconds != null && nanoseconds != null && id != null) {
+            ActivityCursor(Timestamp(seconds, nanoseconds), id)
+        } else null
+        return ActivityNotificationState(
+            initialized = preferences[initializedKey(uid)] == true,
+            cursor = cursor,
+        )
+    }
 
+    suspend fun initialize(context: Context, uid: String, cursor: ActivityCursor?) {
         context.activityNotificationDataStore.edit { mutablePreferences ->
-            val retainedOlderTokens = previousTokens
-                .asSequence()
-                .filterNot(currentTokens::contains)
-                .toList()
-                .takeLast((MAX_TRACKED_EVENTS - currentTokens.size).coerceAtLeast(0))
-                .toSet()
-            mutablePreferences[initializedKey] = true
-            mutablePreferences[eventsKey] = retainedOlderTokens + currentTokens
+            mutablePreferences[initializedKey(uid)] = true
+            if (cursor != null) {
+                mutablePreferences[cursorSecondsKey(uid)] = cursor.createdAt.seconds
+                mutablePreferences[cursorNanosecondsKey(uid)] = cursor.createdAt.nanoseconds
+                mutablePreferences[cursorIdKey(uid)] = cursor.id
+            } else {
+                mutablePreferences.remove(cursorSecondsKey(uid))
+                mutablePreferences.remove(cursorNanosecondsKey(uid))
+                mutablePreferences.remove(cursorIdKey(uid))
+            }
         }
-        newItems
     }
 
-    private fun ActivityItem.notificationToken(): String {
-        val timestamp = requireNotNull(createdAt)
-        return "$id:${timestamp.seconds}:${timestamp.nanoseconds}"
+    suspend fun advance(context: Context, uid: String, cursor: ActivityCursor) {
+        context.activityNotificationDataStore.edit { mutablePreferences ->
+            mutablePreferences[initializedKey(uid)] = true
+            mutablePreferences[cursorSecondsKey(uid)] = cursor.createdAt.seconds
+            mutablePreferences[cursorNanosecondsKey(uid)] = cursor.createdAt.nanoseconds
+            mutablePreferences[cursorIdKey(uid)] = cursor.id
+        }
     }
+
+    private fun initializedKey(uid: String) = booleanPreferencesKey("cursor_initialized_$uid")
+    private fun cursorSecondsKey(uid: String) = longPreferencesKey("cursor_seconds_$uid")
+    private fun cursorNanosecondsKey(uid: String) = intPreferencesKey("cursor_nanos_$uid")
+    private fun cursorIdKey(uid: String) = stringPreferencesKey("cursor_id_$uid")
 }
 
 const val ACTIVITY_NOTIFICATION_PAGE_SIZE = 50L

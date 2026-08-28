@@ -3,6 +3,7 @@ package com.mobdev.catgram.ui.screens
 import com.google.firebase.Timestamp
 import com.mobdev.catgram.data.ActivityItem
 import com.mobdev.catgram.data.ActivityRepository
+import com.mobdev.catgram.data.ActivityPage
 import com.mobdev.catgram.data.ActivityType
 import io.mockk.coVerify
 import io.mockk.coEvery
@@ -110,4 +111,37 @@ class ActivityViewModelTest {
         assertFalse(viewModel.hasUnread)
         coVerify(exactly = 1) { repository.markAllRead() }
     }
+
+    @Test
+    fun `new live activity does not drop the loaded page boundary`() = runTest(dispatcher) {
+        val allItems = (1L..101L).map(::activity)
+        every { repository.observeActivity(50, null) } returns
+            flowOf(allItems.subList(50, 100))
+        coEvery { repository.getOlderActivity(any(), 50) } returns
+            ActivityPage(allItems.subList(0, 50).reversed(), hasMore = false)
+        every { repository.observeActivity(50, any()) } returns flowOf(allItems)
+        val viewModel = ActivityViewModel(repository)
+
+        viewModel.initialize()
+        advanceUntilIdle()
+        viewModel.loadMore()
+        advanceUntilIdle()
+
+        assertTrue(viewModel.items.any { it.id == "activity-51" })
+        assertTrue(viewModel.items.size == 101)
+    }
+
+    private fun activity(index: Long) = ActivityItem(
+        id = "activity-$index",
+        type = ActivityType.COMMENT,
+        actorUid = "actor",
+        actorName = "Cat Fan",
+        actorAvatarUrl = null,
+        postId = "post-1",
+        postPreviewUrl = null,
+        commentId = "comment-$index",
+        commentText = "Nice cat",
+        createdAt = Timestamp(index, 0),
+        readAt = null,
+    )
 }

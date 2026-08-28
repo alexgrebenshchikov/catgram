@@ -3,8 +3,11 @@ package com.mobdev.catgram.data
 import com.google.firebase.Timestamp
 import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.CollectionReference
+import com.google.firebase.firestore.FieldPath
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.Query
+import com.google.firebase.firestore.SetOptions
+import com.google.firebase.firestore.Source
 import com.google.firebase.firestore.ktx.firestore
 import com.google.firebase.ktx.Firebase
 import com.mobdev.catgram.auth.AuthProvider
@@ -35,11 +38,16 @@ data class ActivityItem(
 }
 
 interface ActivityRepository {
-    fun observeActivity(limit: Long = 50): Flow<List<ActivityItem>>
+    fun observeActivity(
+        limit: Long = 50,
+        fromInclusive: ActivityCursor? = null,
+    ): Flow<List<ActivityItem>>
     suspend fun getRecentActivity(limit: Long = 50): List<ActivityItem>
-    suspend fun getOlderActivity(before: Timestamp, limit: Long = 50): ActivityPage
+    suspend fun getOlderActivity(before: ActivityCursor, limit: Long = 50): ActivityPage
+    suspend fun getNewerActivity(after: ActivityCursor?, limit: Long = 50): ActivityPage
     suspend fun markRead(activityId: String)
     suspend fun markAllRead()
+    suspend fun redactLegacyCommentBodies()
 }
 
 data class ActivityPage(
@@ -47,16 +55,30 @@ data class ActivityPage(
     val hasMore: Boolean,
 )
 
+data class ActivityCursor(
+    val createdAt: Timestamp,
+    val id: String,
+)
+
+fun ActivityItem.cursorOrNull(): ActivityCursor? = createdAt?.let { ActivityCursor(it, id) }
+
 class FirebaseActivityRepository(
     private val authProvider: AuthProvider,
 ) : ActivityRepository {
     private val firestore = Firebase.firestore
 
-    override fun observeActivity(limit: Long): Flow<List<ActivityItem>> = callbackFlow {
+    override fun observeActivity(
+        limit: Long,
+        fromInclusive: ActivityCursor?,
+    ): Flow<List<ActivityItem>> = callbackFlow {
         require(limit > 0) { "Activity limit must be positive" }
-        val registration = activityCollection()
-            .orderBy(CREATED_AT, Query.Direction.DESCENDING)
-            .limit(limit)
+        val ordered = activityCollection()
+            .orderBy(CREATED_AT, Query.Direction.ASCENDING)
+            .orderBy(FieldPath.documentId(), Query.Direction.ASCENDING)
+        val query = fromInclusive?.let { cursor ->
+            ordered.startAt(cursor.createdAt, cursor.id)
+        } ?: ordered.limitToLast(limit)
+        val registration = query
             .addSnapshotListener { snapshot, error ->
                 if (error != null) {
                     close(error)
@@ -71,21 +93,41 @@ class FirebaseActivityRepository(
         require(limit > 0) { "Activity limit must be positive" }
         return activityCollection()
             .orderBy(CREATED_AT, Query.Direction.DESCENDING)
+            .orderBy(FieldPath.documentId(), Query.Direction.DESCENDING)
             .limit(limit)
-            .get()
+            .get(Source.SERVER)
             .await()
             .documents
             .mapNotNull { it.toActivityItem() }
     }
 
-    override suspend fun getOlderActivity(before: Timestamp, limit: Long): ActivityPage {
+    override suspend fun getOlderActivity(before: ActivityCursor, limit: Long): ActivityPage {
         require(limit > 0) { "Activity limit must be positive" }
         val snapshot = activityCollection()
             .orderBy(CREATED_AT, Query.Direction.DESCENDING)
-            .whereLessThan(CREATED_AT, before)
+            .orderBy(FieldPath.documentId(), Query.Direction.DESCENDING)
+            .startAfter(before.createdAt, before.id)
             .limit(limit)
             .get()
             .await()
+        return ActivityPage(
+            items = snapshot.documents.mapNotNull { it.toActivityItem() },
+            hasMore = snapshot.size().toLong() == limit,
+        )
+    }
+
+    override suspend fun getNewerActivity(
+        after: ActivityCursor?,
+        limit: Long,
+    ): ActivityPage {
+        require(limit > 0) { "Activity limit must be positive" }
+        val ordered = activityCollection()
+            .orderBy(CREATED_AT, Query.Direction.ASCENDING)
+            .orderBy(FieldPath.documentId(), Query.Direction.ASCENDING)
+        val query = after?.let { cursor ->
+            ordered.startAfter(cursor.createdAt, cursor.id)
+        } ?: ordered
+        val snapshot = query.limit(limit).get(Source.SERVER).await()
         return ActivityPage(
             items = snapshot.documents.mapNotNull { it.toActivityItem() },
             hasMore = snapshot.size().toLong() == limit,
@@ -99,18 +141,56 @@ class FirebaseActivityRepository(
     }
 
     override suspend fun markAllRead() {
-        val unread = activityCollection()
-            .whereEqualTo(READ_AT, null)
-            .limit(MAX_MARK_ALL_BATCH.toLong())
-            .get()
-            .await()
-        if (unread.isEmpty) return
+        while (true) {
+            val unread = activityCollection()
+                .whereEqualTo(READ_AT, null)
+                .limit(MAX_MARK_ALL_BATCH.toLong())
+                .get(Source.SERVER)
+                .await()
+            if (unread.isEmpty) return
 
-        val batch = firestore.batch()
-        unread.documents.forEach { document ->
-            batch.update(document.reference, READ_AT, FieldValue.serverTimestamp())
+            val batch = firestore.batch()
+            unread.documents.forEach { document ->
+                batch.update(document.reference, READ_AT, FieldValue.serverTimestamp())
+            }
+            batch.commit().await()
         }
-        batch.commit().await()
+    }
+
+    override suspend fun redactLegacyCommentBodies() {
+        val uid = authProvider.getCurrentUserOrThrow().uid
+        val userRef = firestore.collection(USERS).document(uid)
+        if (userRef.get(Source.SERVER).await()
+                .getBoolean(ACTIVITY_BODY_REDACTION_COMPLETE) == true
+        ) return
+
+        var lastDocument: DocumentSnapshot? = null
+        while (true) {
+            val ordered = activityCollection().orderBy(FieldPath.documentId())
+            val query = lastDocument?.let { ordered.startAfter(it) } ?: ordered
+            val page = query.limit(REDACTION_PAGE_SIZE.toLong())
+                .get(Source.SERVER)
+                .await()
+            if (page.isEmpty) break
+
+            val legacyCopies = page.documents.filter { document ->
+                document.getString(TYPE) == ActivityType.COMMENT.name
+                    && document.get(COMMENT_TEXT) != null
+            }
+            if (legacyCopies.isNotEmpty()) {
+                val batch = firestore.batch()
+                legacyCopies.forEach { document ->
+                    batch.update(document.reference, COMMENT_TEXT, null)
+                }
+                batch.commit().await()
+            }
+            lastDocument = page.documents.last()
+        }
+
+        userRef.set(
+            mapOf(ACTIVITY_BODY_REDACTION_COMPLETE to true),
+            SetOptions.merge(),
+        ).await()
     }
 
     private fun activityCollection(): CollectionReference {
@@ -140,7 +220,11 @@ class FirebaseActivityRepository(
         const val ACTIVITY = "activity"
         const val CREATED_AT = "createdAt"
         const val READ_AT = "readAt"
+        const val TYPE = "type"
+        const val COMMENT_TEXT = "commentText"
+        const val ACTIVITY_BODY_REDACTION_COMPLETE = "activityCommentBodiesRedactedV1"
         const val MAX_MARK_ALL_BATCH = 400
+        const val REDACTION_PAGE_SIZE = 400
     }
 }
 

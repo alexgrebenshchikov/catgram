@@ -161,7 +161,8 @@ service cloud.firestore {
           'text',
           'displayName',
           'avatarUrl',
-          'createdAt'
+          'createdAt',
+          'deletingAt'
         ])
         && data.userId is string
         && data.url is string
@@ -179,7 +180,40 @@ service cloud.firestore {
             && data.avatarUrl.size() <= 2048
           )
         )
+        && (
+          data.get('deletingAt', null) == null
+          || data.get('deletingAt', null) is timestamp
+        )
         && data.createdAt is timestamp;
+    }
+
+    function isDeletingPostData(data) {
+      return data.get('deletingAt', null) is timestamp;
+    }
+
+    function commentActivityWasRemoved(postId, commentId) {
+      let postPath = /databases/$(database)/documents/user_posts/$(postId);
+      let ownerUid = get(postPath).data.userId;
+      let activityId = 'comment:' + postId + ':' + commentId;
+      let activityPath = /databases/$(database)/documents/users/$(ownerUid)/activity/$(activityId);
+
+      return ownerUid == request.auth.uid
+        || !exists(activityPath)
+        || !existsAfter(activityPath);
+    }
+
+    function deletingOwnCommentActivity(ownerUid, activityId) {
+      let data = resource.data;
+      let postPath = /databases/$(database)/documents/user_posts/$(data.postId);
+      let commentPath = /databases/$(database)/documents/user_posts/$(data.postId)/comments/$(data.commentId);
+
+      return data.type == 'COMMENT'
+        && data.actorUid == request.auth.uid
+        && data.commentId is string
+        && activityId == 'comment:' + data.postId + ':' + data.commentId
+        && exists(postPath)
+        && get(postPath).data.userId == ownerUid
+        && !existsAfter(commentPath);
     }
 
     function validComment() {
@@ -318,8 +352,7 @@ service cloud.firestore {
         && ownerUid != request.auth.uid
         && data.commentId is string
         && data.commentId.size() > 0
-        && data.commentText is string
-        && data.commentText.size() > 0
+        && data.commentText == null
         && activityId == 'comment:' + data.postId + ':' + data.commentId
         && exists(postPath)
         && get(postPath).data.userId == ownerUid
@@ -328,8 +361,7 @@ service cloud.firestore {
         && existsAfter(commentPath)
         && getAfter(commentPath).data.authorUid == request.auth.uid
         && data.actorName == getAfter(commentPath).data.authorName
-        && data.actorAvatarUrl == getAfter(commentPath).data.authorAvatarUrl
-        && data.commentText == getAfter(commentPath).data.text;
+        && data.actorAvatarUrl == getAfter(commentPath).data.authorAvatarUrl;
     }
 
     function validClientActivity(ownerUid, activityId) {
@@ -390,6 +422,7 @@ service cloud.firestore {
 
       return exists(postPath)
         && get(postPath).data.userId == request.auth.uid
+        && isDeletingPostData(get(postPath).data)
         && !existsAfter(postPath);
     }
 
@@ -399,6 +432,7 @@ service cloud.firestore {
       allow create: if signedIn()
         && validUserPost()
         && request.resource.data.userId == request.auth.uid
+        && !isDeletingPostData(request.resource.data)
         && request.resource.data.createdAt == request.time;
 
       // Preserve the existing owner-update behavior while keeping identity and
@@ -407,29 +441,52 @@ service cloud.firestore {
         && validUserPost()
         && resource.data.userId == request.auth.uid
         && request.resource.data.userId == resource.data.userId
-        && request.resource.data.createdAt == resource.data.createdAt;
+        && request.resource.data.createdAt == resource.data.createdAt
+        && (
+          (
+            !isDeletingPostData(resource.data)
+            && isDeletingPostData(request.resource.data)
+            && request.resource.data.diff(resource.data).affectedKeys()
+              .hasOnly(['deletingAt'])
+            && request.resource.data.deletingAt == request.time
+          )
+          || (
+            !isDeletingPostData(resource.data)
+            && !isDeletingPostData(request.resource.data)
+            && request.resource.data.diff(resource.data).affectedKeys()
+              .hasOnly(['url', 'text', 'displayName', 'avatarUrl'])
+          )
+        );
 
       allow delete: if signedIn()
-        && resource.data.userId == request.auth.uid;
+        && resource.data.userId == request.auth.uid
+        && isDeletingPostData(resource.data);
 
       match /comments/{commentId} {
-        allow read: if signedIn();
+        allow read: if signedIn()
+          && exists(/databases/$(database)/documents/user_posts/$(postId));
 
         allow create: if signedIn()
           && exists(/databases/$(database)/documents/user_posts/$(postId))
+          && !isDeletingPostData(
+            get(/databases/$(database)/documents/user_posts/$(postId)).data
+          )
           && validComment();
 
         allow update: if false;
 
         allow delete: if signedIn()
           && (
-            resource.data.authorUid == request.auth.uid
+            (
+              resource.data.authorUid == request.auth.uid
+              && commentActivityWasRemoved(postId, commentId)
+            )
             || (
               exists(/databases/$(database)/documents/user_posts/$(postId))
               && get(/databases/$(database)/documents/user_posts/$(postId)).data.userId
                 == request.auth.uid
-              && !existsAfter(
-                /databases/$(database)/documents/user_posts/$(postId)
+              && isDeletingPostData(
+                get(/databases/$(database)/documents/user_posts/$(postId)).data
               )
             )
           );
@@ -474,13 +531,24 @@ service cloud.firestore {
         allow create: if signedIn()
           && validClientActivity(uid, activityId);
 
-        allow delete: if false;
+        allow delete: if signedIn()
+          && (
+            isOwner(uid)
+            || deletingOwnCommentActivity(uid, activityId)
+          );
 
         allow update: if (
             isOwner(uid)
             && request.resource.data.diff(resource.data).affectedKeys()
               .hasOnly(['readAt'])
             && request.resource.data.readAt == request.time
+          )
+          || (
+            isOwner(uid)
+            && resource.data.type == 'COMMENT'
+            && request.resource.data.diff(resource.data).affectedKeys()
+              .hasOnly(['commentText'])
+            && request.resource.data.commentText == null
           )
           || (
             signedIn()

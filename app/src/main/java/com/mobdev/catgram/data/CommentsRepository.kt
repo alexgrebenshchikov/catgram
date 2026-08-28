@@ -4,8 +4,10 @@ import android.content.Context
 import com.google.firebase.Timestamp
 import com.google.firebase.firestore.AggregateSource
 import com.google.firebase.firestore.DocumentSnapshot
+import com.google.firebase.firestore.FieldPath
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.Query
+import com.google.firebase.firestore.Source
 import com.google.firebase.firestore.ktx.firestore
 import com.google.firebase.ktx.Firebase
 import com.mobdev.catgram.auth.AuthProvider
@@ -27,10 +29,14 @@ data class Comment(
 )
 
 interface CommentsRepository {
-    fun observeComments(postId: String, limit: Long = 50): Flow<List<Comment>>
+    fun observeComments(
+        postId: String,
+        limit: Long = 50,
+        fromInclusive: CommentCursor? = null,
+    ): Flow<List<Comment>>
     suspend fun getOlderComments(
         postId: String,
-        before: Timestamp,
+        before: CommentCursor,
         limit: Long = 50,
     ): CommentsPage
     suspend fun addComment(postId: String, text: String)
@@ -43,19 +49,34 @@ data class CommentsPage(
     val hasMore: Boolean,
 )
 
+data class CommentCursor(
+    val createdAt: Timestamp,
+    val id: String,
+)
+
+fun Comment.cursorOrNull(): CommentCursor? = createdAt?.let { CommentCursor(it, id) }
+
 class FirebaseCommentsRepository(
     private val authProvider: AuthProvider,
     private val context: Context,
 ) : CommentsRepository {
     private val firestore = Firebase.firestore
 
-    override fun observeComments(postId: String, limit: Long): Flow<List<Comment>> = callbackFlow {
+    override fun observeComments(
+        postId: String,
+        limit: Long,
+        fromInclusive: CommentCursor?,
+    ): Flow<List<Comment>> = callbackFlow {
         require(postId.isNotBlank()) { "Post id must not be blank" }
         require(limit > 0) { "Comment limit must be positive" }
 
-        val registration = commentsCollection(postId)
+        val ordered = commentsCollection(postId)
             .orderBy(CREATED_AT, Query.Direction.ASCENDING)
-            .limitToLast(limit)
+            .orderBy(FieldPath.documentId(), Query.Direction.ASCENDING)
+        val query = fromInclusive?.let { cursor ->
+            ordered.startAt(cursor.createdAt, cursor.id)
+        } ?: ordered.limitToLast(limit)
+        val registration = query
             .addSnapshotListener { snapshot, error ->
                 if (error != null) {
                     close(error)
@@ -69,13 +90,14 @@ class FirebaseCommentsRepository(
 
     override suspend fun getOlderComments(
         postId: String,
-        before: Timestamp,
+        before: CommentCursor,
         limit: Long,
     ): CommentsPage {
         require(limit > 0) { "Comment limit must be positive" }
         val snapshot = commentsCollection(postId)
             .orderBy(CREATED_AT, Query.Direction.DESCENDING)
-            .whereLessThan(CREATED_AT, before)
+            .orderBy(FieldPath.documentId(), Query.Direction.DESCENDING)
+            .startAfter(before.createdAt, before.id)
             .limit(limit)
             .get()
             .await()
@@ -132,7 +154,9 @@ class FirebaseCommentsRepository(
                     postId = postId,
                     postPreviewUrl = normalizedActivityUrl(post.getString(URL)),
                     commentId = commentRef.id,
-                    commentText = normalizedText,
+                    // Activity keeps a reference to the comment, not a second
+                    // copy of user-authored text that could outlive deletion.
+                    commentText = null,
                 ),
             )
         }
@@ -141,10 +165,27 @@ class FirebaseCommentsRepository(
 
     override suspend fun deleteComment(postId: String, commentId: String) {
         val currentUid = authProvider.getCurrentUserOrThrow().uid
+        val postRef = firestore.collection(USER_POSTS_COL).document(postId)
         val commentRef = commentsCollection(postId).document(commentId)
-        val comment = commentRef.get().await().toObject(FirebaseComment::class.java) ?: return
+        val post = postRef.get(Source.SERVER).await()
+        check(post.exists()) { "Post does not exist" }
+        val ownerUid = post.getString(USER_ID).orEmpty()
+        check(ownerUid.isNotBlank()) { "Post owner is missing" }
+        val comment = commentRef.get(Source.SERVER).await()
+            .toObject(FirebaseComment::class.java) ?: return
         check(comment.authorUid == currentUid) { "Cannot delete another user's comment" }
-        commentRef.delete().await()
+
+        val batch = firestore.batch()
+        batch.delete(commentRef)
+        if (ownerUid != currentUid) {
+            batch.delete(
+                firestore.collection(USERS)
+                    .document(ownerUid)
+                    .collection(ACTIVITY)
+                    .document(commentActivityDocumentId(postId, commentId)),
+            )
+        }
+        batch.commit().await()
     }
 
     override suspend fun getCommentsCount(postId: String): Long =

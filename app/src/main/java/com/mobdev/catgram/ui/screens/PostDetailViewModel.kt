@@ -11,12 +11,17 @@ import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.mobdev.catgram.CatgramApplication
 import com.mobdev.catgram.data.Comment
+import com.mobdev.catgram.data.CommentCursor
 import com.mobdev.catgram.data.CommentsRepository
 import com.mobdev.catgram.data.MAX_COMMENT_LENGTH
 import com.mobdev.catgram.data.UserPostsRepository
+import com.mobdev.catgram.data.cursorOrNull
 import com.mobdev.catgram.logging.logger
 import com.mobdev.catgram.ui.common.CatCardData
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 
 class PostDetailViewModel(
@@ -43,6 +48,8 @@ class PostDetailViewModel(
 
     private var latestComments: List<Comment> = emptyList()
     private var olderComments: List<Comment> = emptyList()
+    private val commentRangeStart = MutableStateFlow<CommentCursor?>(null)
+    private var loadJob: Job? = null
 
     init {
         load()
@@ -106,18 +113,21 @@ class PostDetailViewModel(
 
     fun loadOlderComments() {
         if (isLoadingOlderComments || !hasOlderComments) return
-        val oldestTimestamp = comments.firstOrNull()?.createdAt ?: return
+        val oldestCursor = comments.firstNotNullOfOrNull(Comment::cursorOrNull) ?: return
         viewModelScope.launch {
             isLoadingOlderComments = true
             try {
                 val page = commentsRepository.getOlderComments(
                     postId = postId,
-                    before = oldestTimestamp,
+                    before = oldestCursor,
                     limit = COMMENT_PAGE_SIZE.toLong(),
                 )
                 olderComments = (page.items + olderComments).distinctBy(Comment::id)
                 hasOlderComments = page.hasMore
                 rebuildComments()
+                comments.firstNotNullOfOrNull(Comment::cursorOrNull)?.let {
+                    commentRangeStart.value = it
+                }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Throwable) {
@@ -134,13 +144,15 @@ class PostDetailViewModel(
     }
 
     private fun load() {
-        viewModelScope.launch {
+        loadJob?.cancel()
+        loadJob = viewModelScope.launch {
             isLoading = true
             error = null
             latestComments = emptyList()
             olderComments = emptyList()
             comments = emptyList()
             hasOlderComments = false
+            commentRangeStart.value = null
             try {
                 val loadedPost = userPostsRepository.getUserPost(postId)
                 if (loadedPost == null) {
@@ -158,12 +170,22 @@ class PostDetailViewModel(
                     timestamp = loadedPost.timestamp,
                 )
                 isLoading = false
-                commentsRepository.observeComments(postId, COMMENT_PAGE_SIZE.toLong()).collect {
-                    latestComments = it
-                    if (olderComments.isEmpty()) {
-                        hasOlderComments = it.size >= COMMENT_PAGE_SIZE
+                commentRangeStart.collectLatest { rangeStart ->
+                    commentsRepository.observeComments(
+                        postId = postId,
+                        limit = COMMENT_PAGE_SIZE.toLong(),
+                        fromInclusive = rangeStart,
+                    ).collect { snapshot ->
+                        latestComments = snapshot
+                        if (rangeStart == null) {
+                            hasOlderComments = snapshot.size >= COMMENT_PAGE_SIZE
+                        } else {
+                            // The ranged listener now covers everything that was
+                            // previously held in the older-page buffer.
+                            olderComments = emptyList()
+                        }
+                        rebuildComments()
                     }
-                    rebuildComments()
                 }
             } catch (e: CancellationException) {
                 throw e
@@ -183,7 +205,11 @@ class PostDetailViewModel(
     private fun rebuildComments() {
         comments = (olderComments + latestComments)
             .distinctBy(Comment::id)
-            .sortedBy { it.createdAt?.toDate()?.time ?: Long.MAX_VALUE }
+            .sortedWith(
+                compareBy<Comment> { it.createdAt?.seconds ?: Long.MAX_VALUE }
+                    .thenBy { it.createdAt?.nanoseconds ?: Int.MAX_VALUE }
+                    .thenBy(Comment::id),
+            )
     }
 
     enum class DetailError {

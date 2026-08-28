@@ -66,6 +66,7 @@ class FeedViewModel(
     private var loadingDataPageJob: Job? = null
     private var loadingFilterStateJob: Job? = null
     private var loadingBreedListJob: Job? = null
+    private val deletingPostIds = mutableSetOf<String>()
     private var isAllCatsDataLoaded = false
     private var duplicateOnlyPageCount = 0
     private var isFilterConfigurationLoaded = false
@@ -259,6 +260,7 @@ class FeedViewModel(
 
     fun deleteUserPost(postId: String, onSuccess: () -> Unit) {
         viewModelScope.launch(dispatcherProvider.mainImmediate) {
+            if (!deletingPostIds.add(postId)) return@launch
             try {
                 withContext(dispatcherProvider.io) {
                     userPostsRepository.deleteUserPost(postId)
@@ -274,6 +276,8 @@ class FeedViewModel(
             } catch (e: Throwable) {
                 snackbarMessage = context.getString(R.string.snackbar_post_delete_failed)
                 logger.e("Failed to delete post ${e.message}", e)
+            } finally {
+                deletingPostIds.remove(postId)
             }
         }
     }

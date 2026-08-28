@@ -90,7 +90,7 @@ fun StartScreen(
                 Text(
                     text = stringResource(R.string.sign_in_with_google_account),
                     style = MaterialTheme.typography.bodyMedium,
-                    color = Color.White,
+                    color = MaterialTheme.colorScheme.onPrimary,
                     modifier = Modifier.weight(1f)
                 )
                 Icon(

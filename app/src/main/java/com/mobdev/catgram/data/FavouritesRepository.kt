@@ -290,17 +290,19 @@ class FirebaseFavouritesRepository(
     )
 
     private fun QuerySnapshot.toUserPostCatCardDataList(): List<CatCardData.UserPost> =
-        toObjects(FirebaseUserPost::class.java).zip(documents).map { (post, doc) ->
-            CatCardData.UserPost(
-                doc.id,
-                post.userId,
-                post.url,
-                post.text,
-                post.displayName,
-                post.avatarUrl,
-                post.createdAt as? Timestamp,
-            )
-        }
+        toObjects(FirebaseUserPost::class.java).zip(documents)
+            .filter { (post, _) -> post.deletingAt == null }
+            .map { (post, doc) ->
+                CatCardData.UserPost(
+                    doc.id,
+                    post.userId,
+                    post.url,
+                    post.text,
+                    post.displayName,
+                    post.avatarUrl,
+                    post.createdAt as? Timestamp,
+                )
+            }
 
     companion object {
         private const val SCHEMA_VERSION_KEY = "favouritesSchemaVersion"

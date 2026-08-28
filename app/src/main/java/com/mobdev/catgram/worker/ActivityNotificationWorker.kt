@@ -10,8 +10,7 @@ import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import com.mobdev.catgram.CatgramApplication
 import com.mobdev.catgram.logging.logger
-import com.mobdev.catgram.notifications.ACTIVITY_NOTIFICATION_PAGE_SIZE
-import com.mobdev.catgram.notifications.notifyUnseenActivity
+import com.mobdev.catgram.notifications.notifyPendingActivity
 import kotlinx.coroutines.CancellationException
 import java.util.concurrent.TimeUnit
 
@@ -26,10 +25,12 @@ class ActivityNotificationWorker(
         if (app.isAppInForeground) return Result.success()
 
         return try {
-            val activity = app.container.activityRepository.getRecentActivity(
-                ACTIVITY_NOTIFICATION_PAGE_SIZE,
+            app.container.activityRepository.redactLegacyCommentBodies()
+            notifyPendingActivity(
+                context = applicationContext,
+                uid = user.uid,
+                activityRepository = app.container.activityRepository,
             )
-            notifyUnseenActivity(applicationContext, user.uid, activity)
             Result.success()
         } catch (e: CancellationException) {
             throw e

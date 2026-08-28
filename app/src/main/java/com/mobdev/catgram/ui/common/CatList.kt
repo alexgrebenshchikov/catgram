@@ -169,6 +169,7 @@ fun CatsApiCard(
     getLikesCount: GetLikesCountCallback?,
     checkIsEnabledCallback: CheckIsEnabledCallback
 ) {
+    val cardContainerColor = MaterialTheme.colorScheme.surfaceContainerHighest
     val isActivated = checkIsFavourite(item)
     val isEnabled = checkIsEnabledCallback(item.id)
     val likesCounter = getLikesCount?.invoke(item.id)
@@ -177,12 +178,14 @@ fun CatsApiCard(
         modifier = Modifier
             .fillMaxWidth()
             .padding(vertical = 8.dp),
-        elevation = CardDefaults.cardElevation(4.dp)
+        elevation = CardDefaults.cardElevation(4.dp),
+        colors = CardDefaults.cardColors(containerColor = cardContainerColor),
     ) {
         ZoomableImage(
             imageUrl = item.url,
             contentDescription = stringResource(R.string.cats_card),
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier.fillMaxWidth(),
+            shimmerBaseColor = cardContainerColor,
         )
         item.breeds.getNameAndDescription()?.let {
             ExpandableHeadingWithDetail(it.first, it.second)
@@ -213,13 +216,12 @@ fun UserPostCard(
     val likesCounter = getLikesCount?.invoke(item.id)
     var showDeleteDialog by rememberSaveable { mutableStateOf(false) }
 
-    val cardColors = CardDefaults.cardColors().let {
-        if (isMyPost) {
-            it.copy(containerColor = MaterialTheme.colorScheme.primaryContainer)
-        } else {
-            it
-        }
+    val cardContainerColor = if (isMyPost) {
+        MaterialTheme.colorScheme.primaryContainer
+    } else {
+        MaterialTheme.colorScheme.surfaceContainerHighest
     }
+    val cardColors = CardDefaults.cardColors(containerColor = cardContainerColor)
 
     // Delete confirmation dialog
     if (showDeleteDialog) {
@@ -277,7 +279,7 @@ fun UserPostCard(
                         modifier = Modifier
                             .size(32.dp)
                             .clip(CircleShape)
-                            .shimmerEffect()
+                            .shimmerEffect(cardContainerColor)
                     )
                 },
                 error = {
@@ -322,7 +324,8 @@ fun UserPostCard(
         ZoomableImage(
             imageUrl = item.url,
             contentDescription = stringResource(R.string.cats_card),
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier.fillMaxWidth(),
+            shimmerBaseColor = cardContainerColor,
         )
 
         // Post text
@@ -455,7 +458,8 @@ fun FavouritesButton(
 fun ZoomableImage(
     imageUrl: String,
     contentDescription: String,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    shimmerBaseColor: Color = Color.Unspecified,
 ) {
     val scope = rememberCoroutineScope()
     val scale = remember { Animatable(1f) }
@@ -532,7 +536,7 @@ fun ZoomableImage(
                     modifier = Modifier
                         .fillMaxWidth()
                         .aspectRatio(1f)
-                        .shimmerEffect()
+                        .shimmerEffect(shimmerBaseColor)
                 )
             },
             error = {
