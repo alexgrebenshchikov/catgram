@@ -7,6 +7,7 @@ typealias FavClickCallback = (Boolean, CatCardData) -> Unit
 typealias CheckIsFavCallback = (CatCardData) -> Boolean
 typealias CheckIsEnabledCallback = (String) -> Boolean
 typealias GetLikesCountCallback = ((String) -> Long?)?
+typealias GetCommentsCountCallback = ((String) -> Long?)?
 typealias OnErrorItemClicked = (() -> Unit)?
 typealias OnPostDeleteCallback = ((CatCardData.UserPost) -> Unit)?
 typealias CheckIsMyPostCallback = (String) -> Boolean

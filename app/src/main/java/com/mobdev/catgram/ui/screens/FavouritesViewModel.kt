@@ -13,10 +13,12 @@ import com.google.firebase.firestore.FirebaseFirestoreException
 import com.mobdev.catgram.CatgramApplication
 import com.mobdev.catgram.auth.AuthProvider
 import com.mobdev.catgram.coroutines.DispatcherProvider
+import com.mobdev.catgram.data.CommentsRepository
 import com.mobdev.catgram.data.FavouritesRepository
 import com.mobdev.catgram.data.FavouritesPage
 import com.mobdev.catgram.logging.logger
 import com.mobdev.catgram.ui.common.CatCardData
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -24,12 +26,15 @@ import kotlinx.coroutines.withContext
 
 class FavouritesViewModel(
     private val favouritesRepository: FavouritesRepository,
+    private val commentsRepository: CommentsRepository,
     private val authProvider: AuthProvider,
     private val dispatcherProvider: DispatcherProvider,
 ) : ViewModel() {
     var items by mutableStateOf<List<CatCardData>?>(listOf())
         private set
     var likes by mutableStateOf<Map<String, Long>>(mapOf())
+        private set
+    var commentCounts by mutableStateOf<Map<String, Long>>(mapOf())
         private set
     var isLoading by mutableStateOf(false)
         private set
@@ -42,6 +47,12 @@ class FavouritesViewModel(
     private var isAllFavouritesLoaded = false
     private var hasLoadedInitialPage by mutableStateOf(false)
     private var favouriteMembership by mutableStateOf<Map<String, Boolean>>(mapOf())
+    private val likeCountRequests = mutableMapOf<String, Long>()
+    private val likeCountFailures = mutableSetOf<String>()
+    private var nextLikeCountRequestId = 0L
+    private val commentCountRequests = mutableMapOf<String, Long>()
+    private val commentCountFailures = mutableSetOf<String>()
+    private var nextCommentCountRequestId = 0L
 
     val isReady: Boolean
         get() = hasLoadedInitialPage
@@ -67,6 +78,7 @@ class FavouritesViewModel(
         viewModelScope.launch(dispatcherProvider.mainImmediate) {
             if (isUpdating[item.id] ?: false) return@launch
             isUpdating = isUpdating.plus(item.id to true)
+            invalidateLikeCountRequest(item.id)
 
             val curItems = items
             items = items?.let { listOf(item) + it } ?: listOf(item)
@@ -102,6 +114,7 @@ class FavouritesViewModel(
         viewModelScope.launch(dispatcherProvider.mainImmediate) {
             if (isUpdating[item.id] ?: false) return@launch
             isUpdating = isUpdating.plus(item.id to true)
+            invalidateLikeCountRequest(item.id)
 
             val curItems = items
             items?.let { local ->
@@ -228,29 +241,86 @@ class FavouritesViewModel(
     }
 
     fun getLikesCount(itemId: String): Long? {
-        likes[itemId]?.let {
-            return it
-        }
+        likes[itemId]?.let { return it }
+        requestLikesCount(itemId)
+        return null
+    }
 
+    private fun requestLikesCount(itemId: String) {
+        if (likeCountFailures.contains(itemId) || likeCountRequests.containsKey(itemId)) return
+
+        val requestId = ++nextLikeCountRequestId
+        likeCountRequests[itemId] = requestId
         viewModelScope.launch(dispatcherProvider.mainImmediate) {
-            if (isUpdating[itemId] ?: false) return@launch
-            isUpdating = isUpdating.plus(itemId to true)
-
             try {
                 val count = withContext(dispatcherProvider.io) {
                     favouritesRepository.getLikesCount(itemId)
                 }
-                likes = likes.plus(itemId to count)
-                logger.d("getLikesCount succeeded")
-
+                if (likeCountRequests[itemId] == requestId) {
+                    likes = likes.plus(itemId to count)
+                    logger.d("getLikesCount succeeded")
+                }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Throwable) {
+                if (likeCountRequests[itemId] == requestId) {
+                    likeCountFailures.add(itemId)
+                }
                 logger.e("getLikesCount failed ${e.message}", e)
             } finally {
-                isUpdating = isUpdating.plus(itemId to false)
+                if (likeCountRequests[itemId] == requestId) {
+                    likeCountRequests.remove(itemId)
+                }
             }
         }
+    }
 
+    fun getCommentsCount(postId: String): Long? {
+        commentCounts[postId]?.let { return it }
+        requestCommentsCount(postId)
         return null
+    }
+
+    private fun requestCommentsCount(postId: String) {
+        if (commentCountFailures.contains(postId) || commentCountRequests.containsKey(postId)) {
+            return
+        }
+
+        val requestId = ++nextCommentCountRequestId
+        commentCountRequests[postId] = requestId
+        viewModelScope.launch(dispatcherProvider.mainImmediate) {
+            try {
+                val count = withContext(dispatcherProvider.io) {
+                    commentsRepository.getCommentsCount(postId)
+                }
+                if (commentCountRequests[postId] == requestId) {
+                    commentCounts = commentCounts.plus(postId to count)
+                    logger.d("getCommentsCount succeeded")
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Throwable) {
+                if (commentCountRequests[postId] == requestId) {
+                    commentCountFailures.add(postId)
+                }
+                logger.e("getCommentsCount failed ${e.message}", e)
+            } finally {
+                if (commentCountRequests[postId] == requestId) {
+                    commentCountRequests.remove(postId)
+                }
+            }
+        }
+    }
+
+    fun invalidateCommentsCount(postId: String) {
+        commentCountRequests.remove(postId)
+        commentCountFailures.remove(postId)
+        commentCounts = commentCounts.minus(postId)
+    }
+
+    fun refreshCommentsCount(postId: String) {
+        invalidateCommentsCount(postId)
+        requestCommentsCount(postId)
     }
 
     fun reset() {
@@ -259,6 +329,11 @@ class FavouritesViewModel(
             favouritesRepository.resetPagination()
             items = listOf()
             likes = mapOf()
+            likeCountRequests.clear()
+            likeCountFailures.clear()
+            commentCounts = mapOf()
+            commentCountRequests.clear()
+            commentCountFailures.clear()
             favouriteMembership = mapOf()
             isAllFavouritesLoaded = false
             hasLoadedInitialPage = false
@@ -272,6 +347,11 @@ class FavouritesViewModel(
     fun refreshData() {
         viewModelScope.launch(dispatcherProvider.mainImmediate) {
             likes = mapOf()
+            likeCountRequests.clear()
+            likeCountFailures.clear()
+            commentCounts = mapOf()
+            commentCountRequests.clear()
+            commentCountFailures.clear()
             fetchFavourites()
         }
     }
@@ -280,7 +360,14 @@ class FavouritesViewModel(
         val membershipKey = "USER_POST:$postId"
         items = items?.filterNot { it.membershipKey() == membershipKey }
         favouriteMembership = favouriteMembership.plus(membershipKey to false)
+        invalidateLikeCountRequest(postId)
         likes = likes.minus(postId)
+        invalidateCommentsCount(postId)
+    }
+
+    private fun invalidateLikeCountRequest(itemId: String) {
+        likeCountRequests.remove(itemId)
+        likeCountFailures.remove(itemId)
     }
 
     private suspend fun fetchNonEmptyPage(): FavouritesPage {
@@ -307,6 +394,7 @@ class FavouritesViewModel(
                 val container = (this[APPLICATION_KEY] as CatgramApplication).container
                 FavouritesViewModel(
                     favouritesRepository = container.favouritesRepository,
+                    commentsRepository = container.commentsRepository,
                     authProvider = container.authProvider,
                     dispatcherProvider = container.dispatcherProvider,
                 )

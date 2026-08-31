@@ -50,7 +50,7 @@ fun FavouritesScreen(
     PullToRefreshBox(
         isRefreshing = isRefreshing,
         onRefresh = {
-            favViewModel.fetchFavourites()
+            favViewModel.refreshData()
         },
         state = state,
         contentAlignment = Alignment.Center
@@ -66,7 +66,8 @@ fun FavouritesScreen(
             },
             checkIsFavourite = { item -> favViewModel.checkInFavourites(item) },
             checkIsEnabledCallback = { id -> !favViewModel.checkIsUpdating(id) && isFavouritesReady},
-            getLikesCount = null,
+            getLikesCount = { id -> favViewModel.getLikesCount(id) },
+            getCommentsCount = { id -> favViewModel.getCommentsCount(id) },
             onErrorItemClicked = null,
             onPostDeleteClick = null,
             checkIsMyPostCallback = { userId -> favViewModel.currentUser?.uid == userId },

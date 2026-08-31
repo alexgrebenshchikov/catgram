@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -89,6 +90,7 @@ fun CatList(
     checkIsFavourite: CheckIsFavCallback,
     checkIsEnabledCallback: CheckIsEnabledCallback,
     getLikesCount: GetLikesCountCallback,
+    getCommentsCount: GetCommentsCountCallback,
     onErrorItemClicked: OnErrorItemClicked,
     onPostDeleteClick: OnPostDeleteCallback,
     checkIsMyPostCallback: CheckIsMyPostCallback,
@@ -116,6 +118,7 @@ fun CatList(
                     checkIsFavourite = checkIsFavourite,
                     checkIsEnabledCallback = checkIsEnabledCallback,
                     getLikesCount = getLikesCount,
+                    getCommentsCount = getCommentsCount,
                     onPostDeleteCallback = onPostDeleteClick?.let { { it.invoke(item) } },
                     onCommentsClick = onPostClick?.let { { it(item.id) } },
                 )
@@ -206,6 +209,7 @@ fun UserPostCard(
     onFavClick: FavClickCallback,
     checkIsFavourite: CheckIsFavCallback,
     getLikesCount: GetLikesCountCallback?,
+    getCommentsCount: GetCommentsCountCallback,
     onPostDeleteCallback: (() -> Unit)?,
     checkIsEnabledCallback: CheckIsEnabledCallback,
     onCommentsClick: (() -> Unit)? = null,
@@ -214,6 +218,7 @@ fun UserPostCard(
     val isEnabled = checkIsEnabledCallback(item.id)
 
     val likesCounter = getLikesCount?.invoke(item.id)
+    val commentsCounter = getCommentsCount?.invoke(item.id)
     var showDeleteDialog by rememberSaveable { mutableStateOf(false) }
 
     val cardContainerColor = if (isMyPost) {
@@ -351,14 +356,22 @@ fun UserPostCard(
                 modifier = Modifier,
             )
             onCommentsClick?.let { onClick ->
-                TextButton(onClick = onClick) {
-                    Icon(
-                        imageVector = Icons.Default.ModeComment,
-                        contentDescription = null,
-                        modifier = Modifier.size(20.dp),
-                    )
-                    Spacer(Modifier.width(6.dp))
-                    Text(stringResource(R.string.comments_action))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(onClick = onClick) {
+                        Icon(
+                            imageVector = Icons.Default.ModeComment,
+                            contentDescription = stringResource(R.string.comments_action),
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(20.dp),
+                        )
+                    }
+                    commentsCounter?.let { count ->
+                        Text(
+                            text = "$count",
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.offset(x = (-8).dp),
+                        )
+                    }
                 }
             }
         }
@@ -448,7 +461,9 @@ fun FavouritesButton(
                 style = MaterialTheme.typography.bodySmall,
                 textAlign = TextAlign.Start,
                 fontSize = 14.sp,
-                modifier = Modifier.wrapContentSize()
+                modifier = Modifier
+                    .offset(x = (-8).dp)
+                    .wrapContentSize()
             )
         }
     }
@@ -600,8 +615,10 @@ fun UserPostCardPreview() {
             onFavClick = { _, _ -> },
             checkIsFavourite = { true },
             getLikesCount = { _ -> 0 },
+            getCommentsCount = { _ -> 0 },
             onPostDeleteCallback = {},
-            checkIsEnabledCallback = { true }
+            checkIsEnabledCallback = { true },
+            onCommentsClick = {},
         )
     }
 }

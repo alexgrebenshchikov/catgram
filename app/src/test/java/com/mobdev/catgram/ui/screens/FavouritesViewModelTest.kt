@@ -3,6 +3,7 @@ package com.mobdev.catgram.ui.screens
 import com.google.firebase.firestore.FirebaseFirestoreException
 import com.mobdev.catgram.auth.AuthProvider
 import com.mobdev.catgram.coroutines.TestDispatcherProvider
+import com.mobdev.catgram.data.CommentsRepository
 import com.mobdev.catgram.data.FavouritesRepository
 import com.mobdev.catgram.data.FavouritesPage
 import com.mobdev.catgram.ui.common.CatCardData
@@ -11,11 +12,13 @@ import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import org.junit.After
@@ -29,6 +32,7 @@ import org.junit.Test
 class FavouritesViewModelTest {
     private val dispatcher = StandardTestDispatcher()
     private lateinit var repository: FavouritesRepository
+    private lateinit var commentsRepository: CommentsRepository
     private lateinit var authProvider: AuthProvider
 
     private val item = CatCardData.CatsApi("cat-1", "https://example.test/cat.jpg", emptyList())
@@ -39,6 +43,7 @@ class FavouritesViewModelTest {
     fun setUp() {
         Dispatchers.setMain(dispatcher)
         repository = mockk(relaxed = true)
+        commentsRepository = mockk(relaxed = true)
         authProvider = mockk(relaxed = true)
         every { authProvider.isSignedIn() } returns false
     }
@@ -110,10 +115,156 @@ class FavouritesViewModelTest {
         val viewModel = createViewModel()
 
         assertEquals(null, viewModel.getLikesCount(item.id))
+        assertEquals(null, viewModel.getLikesCount(item.id))
         advanceUntilIdle()
         assertEquals(4L, viewModel.getLikesCount(item.id))
 
         coVerify(exactly = 1) { repository.getLikesCount(item.id) }
+    }
+
+    @Test
+    fun `likes count failure is cached until refresh`() = runTest(dispatcher) {
+        coEvery { repository.getLikesCount(item.id) } throws IllegalStateException("offline")
+        val viewModel = createViewModel()
+
+        viewModel.getLikesCount(item.id)
+        advanceUntilIdle()
+        viewModel.getLikesCount(item.id)
+        advanceUntilIdle()
+
+        coVerify(exactly = 1) { repository.getLikesCount(item.id) }
+
+        coEvery { repository.getLikesCount(item.id) } returns 5
+        coEvery { repository.fetchNextFavouritesPage(any()) } returns
+            FavouritesPage(emptyList(), hasMore = false)
+        viewModel.refreshData()
+        advanceUntilIdle()
+        viewModel.getLikesCount(item.id)
+        advanceUntilIdle()
+
+        assertEquals(5L, viewModel.getLikesCount(item.id))
+        coVerify(exactly = 2) { repository.getLikesCount(item.id) }
+    }
+
+    @Test
+    fun `likes refresh discards an older in-flight result`() = runTest(dispatcher) {
+        val firstResult = CompletableDeferred<Long>()
+        val refreshedResult = CompletableDeferred<Long>()
+        var requestIndex = 0
+        coEvery { repository.getLikesCount(item.id) } coAnswers {
+            if (requestIndex++ == 0) firstResult.await() else refreshedResult.await()
+        }
+        coEvery { repository.fetchNextFavouritesPage(any()) } returns
+            FavouritesPage(emptyList(), hasMore = false)
+        val viewModel = createViewModel()
+
+        viewModel.getLikesCount(item.id)
+        runCurrent()
+        viewModel.refreshData()
+        runCurrent()
+        viewModel.getLikesCount(item.id)
+        runCurrent()
+
+        refreshedResult.complete(8)
+        runCurrent()
+        firstResult.complete(2)
+        advanceUntilIdle()
+
+        assertEquals(8L, viewModel.getLikesCount(item.id))
+        coVerify(exactly = 2) { repository.getLikesCount(item.id) }
+    }
+
+    @Test
+    fun `favourite update discards an older in-flight likes result`() = runTest(dispatcher) {
+        val olderResult = CompletableDeferred<Long>()
+        coEvery { repository.getLikesCount(item.id) } coAnswers { olderResult.await() }
+        coEvery { repository.addToFavourites(item) } returns 7
+        val viewModel = createViewModel()
+
+        viewModel.getLikesCount(item.id)
+        runCurrent()
+        viewModel.addToFavourites(item)
+        runCurrent()
+
+        assertEquals(7L, viewModel.getLikesCount(item.id))
+        olderResult.complete(2)
+        advanceUntilIdle()
+
+        assertEquals(7L, viewModel.getLikesCount(item.id))
+        coVerify(exactly = 1) { repository.getLikesCount(item.id) }
+        coVerify(exactly = 1) { repository.addToFavourites(item) }
+    }
+
+    @Test
+    fun `comments count is fetched once then cached`() = runTest(dispatcher) {
+        coEvery { commentsRepository.getCommentsCount("post-1") } returns 6
+        val viewModel = createViewModel()
+
+        assertEquals(null, viewModel.getCommentsCount("post-1"))
+        assertEquals(null, viewModel.getCommentsCount("post-1"))
+        advanceUntilIdle()
+        assertEquals(6L, viewModel.getCommentsCount("post-1"))
+
+        coVerify(exactly = 1) { commentsRepository.getCommentsCount("post-1") }
+    }
+
+    @Test
+    fun `comments count failure is cached until refresh`() = runTest(dispatcher) {
+        coEvery { commentsRepository.getCommentsCount("post-1") } throws
+            IllegalStateException("offline")
+        val viewModel = createViewModel()
+
+        viewModel.getCommentsCount("post-1")
+        advanceUntilIdle()
+        viewModel.getCommentsCount("post-1")
+        advanceUntilIdle()
+
+        coVerify(exactly = 1) { commentsRepository.getCommentsCount("post-1") }
+
+        coEvery { commentsRepository.getCommentsCount("post-1") } returns 7
+        viewModel.refreshCommentsCount("post-1")
+        advanceUntilIdle()
+
+        assertEquals(7L, viewModel.getCommentsCount("post-1"))
+        coVerify(exactly = 2) { commentsRepository.getCommentsCount("post-1") }
+    }
+
+    @Test
+    fun `refreshed comments count is fetched again`() = runTest(dispatcher) {
+        coEvery { commentsRepository.getCommentsCount("post-1") } returnsMany listOf(2, 3)
+        val viewModel = createViewModel()
+
+        viewModel.getCommentsCount("post-1")
+        advanceUntilIdle()
+        viewModel.refreshCommentsCount("post-1")
+        advanceUntilIdle()
+
+        assertEquals(3L, viewModel.getCommentsCount("post-1"))
+        coVerify(exactly = 2) { commentsRepository.getCommentsCount("post-1") }
+    }
+
+    @Test
+    fun `comments refresh discards an older in-flight result`() = runTest(dispatcher) {
+        val firstResult = CompletableDeferred<Long>()
+        val refreshedResult = CompletableDeferred<Long>()
+        var requestIndex = 0
+        coEvery { commentsRepository.getCommentsCount("post-1") } coAnswers {
+            if (requestIndex++ == 0) firstResult.await() else refreshedResult.await()
+        }
+        val viewModel = createViewModel()
+
+        viewModel.getCommentsCount("post-1")
+        runCurrent()
+        viewModel.refreshCommentsCount("post-1")
+        runCurrent()
+
+        refreshedResult.complete(9)
+        runCurrent()
+        firstResult.complete(1)
+        advanceUntilIdle()
+
+        assertEquals(9L, viewModel.getCommentsCount("post-1"))
+        coVerify(exactly = 2) { commentsRepository.getCommentsCount("post-1") }
     }
 
     @Test
@@ -209,6 +360,7 @@ class FavouritesViewModelTest {
 
     private fun createViewModel() = FavouritesViewModel(
         favouritesRepository = repository,
+        commentsRepository = commentsRepository,
         authProvider = authProvider,
         dispatcherProvider = TestDispatcherProvider(dispatcher),
     )

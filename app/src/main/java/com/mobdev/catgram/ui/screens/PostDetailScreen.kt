@@ -33,6 +33,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -74,6 +75,10 @@ fun PostDetailScreen(
     val keyboardController = LocalSoftwareKeyboardController.current
     var draft by rememberSaveable(postId, stateSaver = TextFieldValue.Saver) {
         mutableStateOf(TextFieldValue())
+    }
+
+    DisposableEffect(postId, favouritesViewModel) {
+        onDispose { favouritesViewModel.refreshCommentsCount(postId) }
     }
 
     LaunchedEffect(detailViewModel.commentError) {
@@ -165,6 +170,7 @@ fun PostDetailScreen(
                             },
                             checkIsFavourite = favouritesViewModel::checkInFavourites,
                             getLikesCount = favouritesViewModel::getLikesCount,
+                            getCommentsCount = null,
                             onPostDeleteCallback = null,
                             checkIsEnabledCallback = { id ->
                                 favouritesViewModel.isReady &&

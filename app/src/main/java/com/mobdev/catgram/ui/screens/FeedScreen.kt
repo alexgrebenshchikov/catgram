@@ -167,6 +167,7 @@ fun FeedScreen(
             checkIsFavourite = { item -> favViewModel.checkInFavourites(item) },
             checkIsEnabledCallback = { id -> !favViewModel.checkIsUpdating(id) && isFavouritesReady },
             getLikesCount = { id -> favViewModel.getLikesCount(id) },
+            getCommentsCount = { id -> favViewModel.getCommentsCount(id) },
             onErrorItemClicked = { feedViewModel.loadDataPageIfNeeded(checkErrorState = false) },
             onPostDeleteClick = {
                 feedViewModel.deleteUserPost(it.id) {
